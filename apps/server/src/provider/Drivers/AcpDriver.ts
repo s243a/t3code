@@ -1,0 +1,142 @@
+/**
+ * AcpDriver — instantiates the generic ACP adapter from settings.
+ *
+ * Deliberately thin. Vendor drivers beside this one carry probe commands,
+ * version parsing and model-discovery calls specific to one product; this one
+ * has none of that, because everything it needs is either in the protocol or in
+ * configuration.
+ *
+ * That is also why its snapshot is static. There is no universal way to ask an
+ * arbitrary binary "are you healthy and what models do you have" — the protocol
+ * answers the second question at session start, and inventing a probe would
+ * mean guessing at a CLI convention the agent may not follow.
+ *
+ * @module provider/Drivers/AcpDriver
+ */
+import { AcpSettings, type ModelCapabilities, type ServerProvider } from "@t3tools/contracts";
+import { createModelCapabilities } from "@t3tools/shared/model";
+import * as Crypto from "effect/Crypto";
+import * as FileSystem from "effect/FileSystem";
+import * as DateTime from "effect/DateTime";
+import * as Effect from "effect/Effect";
+import * as Path from "effect/Path";
+import * as Ref from "effect/Ref";
+import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
+import { ChildProcessSpawner } from "effect/unstable/process";
+
+import { makeUnsupportedTextGeneration } from "../../textGeneration/UnsupportedTextGeneration.ts";
+import { makeAcpAdapter, ACP_DRIVER_KIND } from "../Layers/AcpAdapter.ts";
+import {
+  defaultProviderContinuationIdentity,
+  type ProviderDriver,
+  type ProviderInstance,
+} from "../ProviderDriver.ts";
+import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment.ts";
+import {
+  makeManualOnlyProviderMaintenanceCapabilities,
+  makeStaticProviderMaintenanceResolver,
+  resolveProviderMaintenanceCapabilitiesEffect,
+} from "../providerMaintenance.ts";
+import { buildServerProvider, providerModelsFromSettings } from "../providerSnapshot.ts";
+
+const decodeAcpSettings = Schema.decodeSync(AcpSettings);
+
+const PRESENTATION = {
+  displayName: "ACP agent",
+  badgeLabel: "Generic",
+  showInteractionModeToggle: false,
+} as const;
+
+const EMPTY_CAPABILITIES: ModelCapabilities = createModelCapabilities({ optionDescriptors: [] });
+
+const UPDATE = makeStaticProviderMaintenanceResolver(
+  // Updating an arbitrary third-party binary is not ours to manage.
+  makeManualOnlyProviderMaintenanceCapabilities({
+    provider: ACP_DRIVER_KIND,
+    packageName: null,
+  }),
+);
+
+export type AcpDriverEnv =
+  | ChildProcessSpawner.ChildProcessSpawner
+  | Crypto.Crypto
+  | FileSystem.FileSystem
+  | Path.Path;
+
+export const AcpDriver: ProviderDriver<AcpSettings, AcpDriverEnv> = {
+  driverKind: ACP_DRIVER_KIND,
+  metadata: {
+    displayName: PRESENTATION.displayName,
+    supportsMultipleInstances: true,
+  },
+  configSchema: AcpSettings,
+  defaultConfig: (): AcpSettings => decodeAcpSettings({}),
+  create: ({ instanceId, displayName, accentColor, environment, enabled, config }) =>
+    Effect.gen(function* () {
+      const processEnv = mergeProviderInstanceEnvironment(environment);
+      const continuationIdentity = defaultProviderContinuationIdentity({
+        driverKind: ACP_DRIVER_KIND,
+        instanceId,
+      });
+      const effectiveConfig = { ...config, enabled } satisfies AcpSettings;
+
+      const maintenanceCapabilities = yield* resolveProviderMaintenanceCapabilitiesEffect(UPDATE, {
+        binaryPath: effectiveConfig.command,
+        env: processEnv,
+      });
+
+      const adapter = yield* makeAcpAdapter(effectiveConfig, { instanceId });
+
+      const checkedAt = DateTime.formatIso(yield* DateTime.now);
+      const configured = effectiveConfig.command.trim().length > 0;
+      const draft = buildServerProvider({
+        driver: ACP_DRIVER_KIND,
+        presentation: {
+          ...PRESENTATION,
+          ...(displayName ? { displayName } : {}),
+        },
+        enabled,
+        checkedAt,
+        models: providerModelsFromSettings([], effectiveConfig.customModels, EMPTY_CAPABILITIES),
+        probe: {
+          // "Installed" here means "a command was configured". Claiming to have
+          // verified a binary we never ran would be a lie the UI would repeat.
+          installed: configured,
+          version: null,
+          status: configured ? "ready" : "error",
+          auth: { status: "unknown" },
+          ...(configured
+            ? {}
+            : { message: "Set the command for this ACP agent, then restart T3 Code." }),
+        },
+      });
+
+      const snapshotValue: ServerProvider = {
+        ...draft,
+        instanceId,
+        driver: ACP_DRIVER_KIND,
+        ...(displayName ? { displayName } : {}),
+        ...(accentColor ? { accentColor } : {}),
+        continuation: { groupKey: continuationIdentity.continuationKey },
+      };
+      const snapshotRef = yield* Ref.make(snapshotValue);
+
+      return {
+        instanceId,
+        driverKind: ACP_DRIVER_KIND,
+        continuationIdentity,
+        displayName,
+        ...(accentColor ? { accentColor } : {}),
+        enabled,
+        snapshot: {
+          maintenanceCapabilities,
+          getSnapshot: Ref.get(snapshotRef),
+          refresh: Ref.get(snapshotRef),
+          streamChanges: Stream.empty,
+        },
+        adapter,
+        textGeneration: makeUnsupportedTextGeneration(PRESENTATION.displayName),
+      } satisfies ProviderInstance;
+    }),
+};
