@@ -460,6 +460,89 @@ export const GrokSettings = makeProviderSettingsSchema(
 );
 export type GrokSettings = typeof GrokSettings.Type;
 
+/**
+ * Settings for the generic ACP driver.
+ *
+ * Deliberately describes *any* agent that speaks the Agent Client Protocol
+ * rather than a particular product: how to launch it, what the client will do
+ * on its behalf, and what to show when it advertises no models. Vendor
+ * specifics belong in a `profile`, which may only supply values a user could
+ * have typed here by hand — anything needing code is an extension, not a
+ * profile.
+ */
+export const AcpSettings = makeProviderSettingsSchema(
+  {
+    enabled: Schema.Boolean.pipe(
+      Schema.withDecodingDefault(Effect.succeed(false)),
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
+    command: TrimmedString.pipe(
+      Schema.withDecodingDefault(Effect.succeed("")),
+      Schema.annotateKey({
+        title: "Command",
+        description: "Executable that speaks ACP over stdio.",
+        providerSettingsForm: { placeholder: "my-acp-agent", clearWhenEmpty: "omit" },
+      }),
+    ),
+    args: Schema.Array(Schema.String).pipe(
+      Schema.withDecodingDefault(Effect.succeed([])),
+      Schema.annotateKey({
+        title: "Arguments",
+        description: "Arguments passed to the command on launch.",
+      }),
+    ),
+    env: Schema.Record(Schema.String, Schema.String).pipe(
+      Schema.withDecodingDefault(Effect.succeed({})),
+      Schema.annotateKey({
+        title: "Environment",
+        description: "Extra environment variables for the agent process.",
+      }),
+    ),
+    authMethodId: TrimmedString.pipe(
+      Schema.withDecodingDefault(Effect.succeed("")),
+      Schema.annotateKey({
+        title: "Auth method",
+        description:
+          "Auth method to present at startup. Leave empty for agents with no authentication step.",
+        providerSettingsForm: { placeholder: "", clearWhenEmpty: "omit" },
+      }),
+    ),
+    // Off by default on purpose. These decide whether the client merely watches
+    // the agent work or performs privileged actions for it, which is the user's
+    // call to make rather than a default to inherit.
+    filesystemAccess: Schema.Boolean.pipe(
+      Schema.withDecodingDefault(Effect.succeed(false)),
+      Schema.annotateKey({
+        title: "Serve filesystem requests",
+        description: "Let the agent ask this client to read and write files on its behalf.",
+      }),
+    ),
+    terminalAccess: Schema.Boolean.pipe(
+      Schema.withDecodingDefault(Effect.succeed(false)),
+      Schema.annotateKey({
+        title: "Serve terminal requests",
+        description: "Let the agent ask this client to run commands on its behalf.",
+      }),
+    ),
+    profile: TrimmedString.pipe(
+      Schema.withDecodingDefault(Effect.succeed("")),
+      Schema.annotateKey({
+        title: "Profile",
+        description: "Named preset supplying the fields above for a known agent.",
+        providerSettingsForm: { placeholder: "", clearWhenEmpty: "omit" },
+      }),
+    ),
+    customModels: Schema.Array(Schema.String).pipe(
+      Schema.withDecodingDefault(Effect.succeed([])),
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
+  },
+  {
+    order: ["command", "args", "env", "authMethodId", "filesystemAccess", "terminalAccess"],
+  },
+);
+export type AcpSettings = typeof AcpSettings.Type;
+
 export const OpenCodeSettings = makeProviderSettingsSchema(
   {
     enabled: Schema.Boolean.pipe(
