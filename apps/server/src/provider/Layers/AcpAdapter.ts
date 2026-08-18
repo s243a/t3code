@@ -223,6 +223,46 @@ export const makeAcpAdapter = Effect.fn("makeAcpAdapter")(function* (
     }
   });
 
+  /** Publish a turn lifecycle event carrying the turn it belongs to. */
+  const publishTurnEvent = Effect.fn("AcpAdapter.publishTurnEvent")(function* (
+    threadId: ThreadId,
+    turnId: TurnId,
+    event: { readonly type: "turn.started" | "turn.completed"; readonly payload: unknown },
+  ) {
+    const stamp = yield* nextStamp;
+    yield* PubSub.publish(runtimeEvents, {
+      type: event.type,
+      ...stamp,
+      provider: ACP_DRIVER_KIND,
+      threadId,
+      turnId,
+      payload: event.payload,
+    } as ProviderRuntimeEvent);
+  });
+
+  /**
+   * Close out a turn. Order matters: the terminal event is published while
+   * `activeTurnId` is still set, so it carries the turn it ends. Clearing first
+   * would emit an orphaned event the client cannot attribute.
+   */
+  const endTurn = Effect.fn("AcpAdapter.endTurn")(function* (
+    threadId: ThreadId,
+    turnId: TurnId,
+    payload: {
+      readonly state: "completed" | "failed";
+      readonly stopReason?: string;
+      readonly errorMessage?: string;
+    },
+  ) {
+    yield* publishTurnEvent(threadId, turnId, { type: "turn.completed", payload });
+    const session = sessions.get(threadId);
+    if (session) {
+      session.activeTurnId = undefined;
+      session.status = payload.state === "failed" ? "error" : "ready";
+      session.updatedAt = yield* nowIso;
+    }
+  });
+
   const startSession = Effect.fn("AcpAdapter.startSession")(function* (
     input: ProviderSessionStartInput,
   ) {
@@ -298,20 +338,31 @@ export const makeAcpAdapter = Effect.fn("makeAcpAdapter")(function* (
 
     const prompt = [{ type: "text" as const, text: input.input ?? "" }];
 
+    yield* publishTurnEvent(input.threadId, turnId, {
+      type: "turn.started",
+      payload: {},
+    });
+
     // The prompt resolves when the turn ends; run it detached so callers get a
     // turn id immediately and observe progress through the event stream.
+    //
+    // Both outcomes MUST publish a terminal event. A turn that fails silently
+    // leaves the client showing a spinner for work that already stopped, which
+    // is worse than showing the error.
     yield* Effect.forkDetach(
       session.runtime.prompt({ prompt }).pipe(
         Effect.matchEffect({
-          onFailure: () =>
-            Effect.sync(() => {
-              session.activeTurnId = undefined;
-              session.status = "error";
+          onFailure: (cause) =>
+            endTurn(input.threadId, turnId, {
+              state: "failed",
+              errorMessage: String(cause?.message ?? cause) || "ACP prompt failed.",
             }),
-          onSuccess: () =>
-            Effect.sync(() => {
-              session.activeTurnId = undefined;
-              session.status = "ready";
+          onSuccess: (response) =>
+            endTurn(input.threadId, turnId, {
+              state: "completed",
+              ...(typeof response?.stopReason === "string"
+                ? { stopReason: response.stopReason }
+                : {}),
             }),
         }),
       ),
