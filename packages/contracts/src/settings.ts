@@ -532,13 +532,34 @@ export const AcpSettings = makeProviderSettingsSchema(
         providerSettingsForm: { placeholder: "", clearWhenEmpty: "omit" },
       }),
     ),
+    // A file rather than a settings list, because the names are the point: a
+    // custom model entered in the UI is stored as its own normalized slug, so
+    // "Gemini 3.7 Flash" cannot survive as a label. Models read from here are
+    // presented as the agent's own, keeping id and display name separate.
+    modelsPath: TrimmedString.pipe(
+      Schema.withDecodingDefault(Effect.succeed("")),
+      Schema.annotateKey({
+        title: "Models file",
+        description:
+          "JSON file listing the models this agent offers. Each entry is an id the agent understands and a name to show.",
+        providerSettingsForm: { placeholder: "~/.t3/acp-models.json", clearWhenEmpty: "omit" },
+      }),
+    ),
     customModels: Schema.Array(Schema.String).pipe(
       Schema.withDecodingDefault(Effect.succeed([])),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
   },
   {
-    order: ["command", "args", "env", "authMethodId", "filesystemAccess", "terminalAccess"],
+    order: [
+      "command",
+      "args",
+      "env",
+      "authMethodId",
+      "modelsPath",
+      "filesystemAccess",
+      "terminalAccess",
+    ],
   },
 );
 export type AcpSettings = typeof AcpSettings.Type;

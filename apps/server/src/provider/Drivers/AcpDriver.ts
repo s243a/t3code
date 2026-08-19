@@ -18,6 +18,7 @@ import {
   type ModelCapabilities,
   type ProviderOptionDescriptor,
   type ServerProvider,
+  type ServerProviderModel,
 } from "@t3tools/contracts";
 import { createModelCapabilities } from "@t3tools/shared/model";
 import * as Crypto from "effect/Crypto";
@@ -46,6 +47,62 @@ import {
 import { buildServerProvider, providerModelsFromSettings } from "../providerSnapshot.ts";
 
 const decodeAcpSettings = Schema.decodeSync(AcpSettings);
+const decodeJson = Schema.decodeEffect(Schema.fromJsonString(Schema.Unknown));
+
+/**
+ * Models an ACP agent offers, read from a file the user maintains.
+ *
+ * Entries may be `"id"` or `{ id, name }`. They are returned as built-in rather
+ * than custom models because custom ones are stored under a normalized slug
+ * that also becomes their label, which loses names like "Gemini 3.7 Flash".
+ *
+ * A file that is missing or malformed yields no models rather than failing the
+ * provider: an unreadable list is a reason to show nothing, not a reason to be
+ * unable to launch the agent.
+ */
+export const readModelsFile = Effect.fn("AcpDriver.readModelsFile")(function* (
+  modelsPath: string,
+  capabilities: ModelCapabilities,
+) {
+  if (modelsPath.trim().length === 0) return [];
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const resolved = modelsPath.startsWith("~/")
+    ? path.join(process.env.HOME ?? "", modelsPath.slice(2))
+    : modelsPath;
+
+  const parsed = yield* fs.readFileString(resolved).pipe(
+    Effect.flatMap((raw) => decodeJson(raw)),
+    Effect.catchCause((cause) =>
+      Effect.logWarning("could not read the ACP models file", { modelsPath: resolved, cause }).pipe(
+        Effect.as(null),
+      ),
+    ),
+  );
+  if (parsed === null) return [];
+
+  const entries = Array.isArray(parsed)
+    ? parsed
+    : Array.isArray((parsed as { models?: unknown }).models)
+      ? (parsed as { models: ReadonlyArray<unknown> }).models
+      : [];
+
+  const models: Array<ServerProviderModel> = [];
+  const seen = new Set<string>();
+  for (const entry of entries) {
+    const id = typeof entry === "string" ? entry : (entry as { id?: unknown } | null)?.id;
+    if (typeof id !== "string" || id.trim().length === 0 || seen.has(id)) continue;
+    seen.add(id);
+    const name = typeof entry === "string" ? entry : (entry as { name?: unknown }).name;
+    models.push({
+      slug: id,
+      name: typeof name === "string" && name.trim().length > 0 ? name : id,
+      isCustom: false,
+      capabilities,
+    });
+  }
+  return models;
+});
 
 const PRESENTATION = {
   displayName: "ACP agent",
@@ -132,6 +189,7 @@ export const AcpDriver: ProviderDriver<AcpSettings, AcpDriverEnv> = {
       });
 
       const adapter = yield* makeAcpAdapter(effectiveConfig, { instanceId });
+      const fileModels = yield* readModelsFile(effectiveConfig.modelsPath, ACP_CAPABILITIES);
 
       const checkedAt = DateTime.formatIso(yield* DateTime.now);
       const configured = effectiveConfig.command.trim().length > 0;
@@ -143,7 +201,11 @@ export const AcpDriver: ProviderDriver<AcpSettings, AcpDriverEnv> = {
         },
         enabled,
         checkedAt,
-        models: providerModelsFromSettings([], effectiveConfig.customModels, ACP_CAPABILITIES),
+        models: providerModelsFromSettings(
+          fileModels,
+          effectiveConfig.customModels,
+          ACP_CAPABILITIES,
+        ),
         probe: {
           // "Installed" here means "a command was configured". Claiming to have
           // verified a binary we never ran would be a lie the UI would repeat.

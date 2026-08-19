@@ -342,6 +342,14 @@ export const makeAcpAdapter = Effect.fn("makeAcpAdapter")(function* (
     for (const option of selections?.options ?? []) {
       yield* session.runtime.setConfigOption(option.id, option.value).pipe(Effect.ignore);
     }
+    // The model is a selection like any other, and stale until the agent is
+    // told. Only on change: agents that re-plan on set_model should not do it
+    // every turn.
+    const model = selections?.model;
+    if (model !== undefined && model !== session.model) {
+      yield* session.runtime.setSessionModel(model).pipe(Effect.ignore);
+      session.model = model;
+    }
   });
 
   const sendTurn = Effect.fn("AcpAdapter.sendTurn")(function* (input: ProviderSendTurnInput) {
