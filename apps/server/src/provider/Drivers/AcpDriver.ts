@@ -13,7 +13,12 @@
  *
  * @module provider/Drivers/AcpDriver
  */
-import { AcpSettings, type ModelCapabilities, type ServerProvider } from "@t3tools/contracts";
+import {
+  AcpSettings,
+  type ModelCapabilities,
+  type ProviderOptionDescriptor,
+  type ServerProvider,
+} from "@t3tools/contracts";
 import { createModelCapabilities } from "@t3tools/shared/model";
 import * as Crypto from "effect/Crypto";
 import * as FileSystem from "effect/FileSystem";
@@ -48,7 +53,47 @@ const PRESENTATION = {
   showInteractionModeToggle: false,
 } as const;
 
-const EMPTY_CAPABILITIES: ModelCapabilities = createModelCapabilities({ optionDescriptors: [] });
+/**
+ * Options a user can change per turn, rendered by the client as pickers.
+ *
+ * These are decisions, not launch settings: anything that changes how the agent
+ * process is started belongs to a provider instance instead, because it cannot
+ * be applied to a session already running.
+ *
+ * The list is data. A new option is an entry here plus a case in the bridge —
+ * no client work, and it renders on web, desktop and mobile alike.
+ */
+const ACP_OPTION_DESCRIPTORS: ReadonlyArray<ProviderOptionDescriptor> = [
+  {
+    id: "review",
+    label: "Review",
+    description: "Which tool calls stop for approval before they run.",
+    type: "select",
+    options: [
+      {
+        id: "review-everything",
+        label: "Everything",
+        description: "Approve every tool call. Safest, and the supervision posture.",
+        isDefault: true,
+      },
+      {
+        id: "review-consequential",
+        label: "Consequential only",
+        description: "Reads run freely; writes, commands and network stop for approval.",
+      },
+      {
+        id: "allow-all",
+        label: "Nothing",
+        description: "Approve everything automatically. Only sensible when something else gates.",
+      },
+    ],
+    currentValue: "review-everything",
+  },
+];
+
+const ACP_CAPABILITIES: ModelCapabilities = createModelCapabilities({
+  optionDescriptors: [...ACP_OPTION_DESCRIPTORS],
+});
 
 const UPDATE = makeStaticProviderMaintenanceResolver(
   // Updating an arbitrary third-party binary is not ours to manage.
@@ -98,7 +143,7 @@ export const AcpDriver: ProviderDriver<AcpSettings, AcpDriverEnv> = {
         },
         enabled,
         checkedAt,
-        models: providerModelsFromSettings([], effectiveConfig.customModels, EMPTY_CAPABILITIES),
+        models: providerModelsFromSettings([], effectiveConfig.customModels, ACP_CAPABILITIES),
         probe: {
           // "Installed" here means "a command was configured". Claiming to have
           // verified a binary we never ran would be a lie the UI would repeat.

@@ -327,8 +327,26 @@ export const makeAcpAdapter = Effect.fn("makeAcpAdapter")(function* (
     return buildSession(input.threadId, state);
   });
 
+  /**
+   * Push the user's option choices to the agent.
+   *
+   * Best-effort on purpose: an agent that does not implement
+   * `session/set_config_option` should still be able to run a turn. Refusing to
+   * proceed because a picker could not be applied would make the option worse
+   * than not offering it.
+   */
+  const applyOptionSelections = Effect.fn("AcpAdapter.applyOptionSelections")(function* (
+    session: AcpAdapterSessionState,
+    selections: ProviderSendTurnInput["modelSelection"],
+  ) {
+    for (const option of selections?.options ?? []) {
+      yield* session.runtime.setConfigOption(option.id, option.value).pipe(Effect.ignore);
+    }
+  });
+
   const sendTurn = Effect.fn("AcpAdapter.sendTurn")(function* (input: ProviderSendTurnInput) {
     const session = yield* requireSession(input.threadId);
+    yield* applyOptionSelections(session, input.modelSelection);
     const turnUuid = yield* crypto.randomUUIDv4.pipe(Effect.orDie);
     const turnId = TurnId.make(turnUuid);
 
