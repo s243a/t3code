@@ -212,6 +212,26 @@ is the ordinary state of a mixed home network — relaying is not a luxury:
   intermediaries. Relaying knowledge but refusing to relay bytes is a line drawn
   by taste rather than principle.
 
+Relaying also buys a security property that broadcast discovery cannot, and this
+may be the stronger argument. A peer introduced *through* peers it already knows
+never has to advertise itself: no mDNS announcement, no service published to the
+segment, and — if introductions and traffic both travel over connections it
+dialled — **no inbound listener at all**. What is not listening cannot be
+scanned, port-probed, or reached by a compromised device on the same LAN, and it
+traverses NAT without a forwarded port. That is the reverse-worker posture from
+option 2 below, arrived at from the other direction.
+
+Two things keep that honest:
+
+- **Somebody still listens.** A peer that accepts relayed connections needs an
+  inbound socket, or must itself dial out to a coordination point. The property
+  is "most peers need no listener", which concentrates exposure on a few nodes
+  rather than removing it. Choosing which nodes those are is the design.
+- **Not being findable is not a control.** An introduced peer must still prove
+  who it is; obscurity changes the odds of being probed, not the outcome once
+  someone is. It also raises what a compromised directory is worth, since the
+  directory becomes the only way to find anything.
+
 Two conditions look load-bearing enough to write down now, since they decide
 whether relaying stays cheap:
 
