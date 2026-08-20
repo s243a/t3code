@@ -227,6 +227,23 @@ it is practical: the enrolment path leaves a window in which the peer was
 discoverable and answering, and a machine that never opens one has no window to
 get wrong.
 
+### Enrolling a peer by hand
+
+Where keys travel by USB drive or similar, the useful design is not "encrypt the
+keys" but **do not move a private key at all.** WireGuard private keys can be
+generated on the node that will use them, and only public keys need to travel;
+public keys are not secret. What needs protecting is the *authorisation* — proof
+that this new public key is admitted — which can be one-time and expiring.
+
+So an enrolment bundle carries public keys and endpoints, which need no
+confidentiality, plus a single-use secret that is worthless once spent. Encrypt
+that bundle to a passphrase anyway, and be clear about which threat it answers:
+not an attacker already on the machine, because a key is decrypted for use and
+by then the fight is over, but the drive being lost, lent, or found in a drawer
+months later. Removable media is unusually bad at forgetting — wear levelling
+means deleting a file often does not remove it — so an expiry that makes a stale
+bundle inert is worth more than careful deletion.
+
 It should be supported and it should not be the default. Manual key exchange is
 exactly the friction that makes a security feature go unused, and a fabric whose
 safe path requires it will mostly be run on its unsafe one. Note also that a
