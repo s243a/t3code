@@ -188,6 +188,39 @@ That last one is worth noticing: `covert` and the no-listener posture are the
 same idea reached from two directions, and a peer that only dials out is
 already covert without a mode for it.
 
+### First covert implementation: WireGuard
+
+WireGuard is the first transport for `covert`, with others possible later. It
+already has the property being asked for — unauthenticated packets are dropped
+unanswered — and choosing an existing one avoids designing a handshake, which is
+where this would otherwise go wrong.
+
+The bootstrap falls out neatly: **the authenticated channel enrols the covert
+one.** Trusted peers exchange WireGuard public keys and endpoints over the
+connection they already have, bring up the covert channel, and only then does a
+peer changing privacy mode drop its TCP listener. The channel you already trust
+builds the channel that replaces it, and no key material ever needs a side
+band.
+
+Two rules keep a mode change from being a disconnection:
+
+- **Verify, then drop.** Establish the covert channel, confirm it carries
+  traffic to each trusted peer, and only then stop listening. A switch that
+  cannot be confirmed rolls back to TCP rather than completing. Done in the
+  other order, "going covert" and "silently disconnecting everyone" look
+  identical from the inside.
+- **Keep a way back in.** A peer that goes covert and then loses its
+  configuration is unreachable by design, and the failure is invisible — no
+  port answers, which is exactly what success looks like. It needs a local
+  recovery path that does not depend on the fabric: the loopback-only
+  diagnostic endpoint above, or a console. Bricked-by-privacy is the failure
+  mode this posture invites.
+
+Enrolment before concealment also decides who can ever reach a covert peer: a
+peer that is not already enrolled cannot find it, so new peers arrive by
+introduction through one that is. That is the relay case again, and it is why
+these two features want designing together rather than in sequence.
+
 Whatever the posture, **sameness has to include timing.** A rejection that is
 quick for a malformed token and slow for a well-formed one is an oracle with
 extra steps. Compare in constant time and let every failure take the same shape.
