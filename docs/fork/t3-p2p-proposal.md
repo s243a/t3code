@@ -236,8 +236,13 @@ public keys are not secret. What needs protecting is the *authorisation* — pro
 that this new public key is admitted — which can be one-time and expiring.
 
 So an enrolment bundle carries public keys and endpoints, which need no
-confidentiality, plus a single-use secret that is worthless once spent. Encrypt
-that bundle to a passphrase anyway, and be clear about which threat it answers:
+*cryptographic* secrecy, plus a single-use secret that is worthless once spent.
+
+Encrypt the whole bundle to a passphrase regardless — including the public parts.
+A public key is safe to publish, but a bundle listing a dozen machines and where
+they live is a map of someone's fabric, and that is worth having whether or not
+any single field is a secret. Be clear about which threat the encryption
+answers:
 not an attacker already on the machine, because a key is decrypted for use and
 by then the fight is over, but the drive being lost, lent, or found in a drawer
 months later. Removable media is unusually bad at forgetting — wear levelling

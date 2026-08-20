@@ -3,6 +3,13 @@
 > **Fork-local document.** Specific to the `s243a/t3code` fork, not proposed for
 > upstream. See [README](./README.md) for how this relates to the other options.
 
+> **Built.** Route A shipped as
+> [`s243a/mcp-acp-bridge`](https://github.com/s243a/mcp-acp-bridge). This
+> document is the design as it stood beforehand and is kept for the reasoning;
+> that repository's `docs/design.md` is authoritative for how it actually
+> behaves, including several things this document assumed and got wrong about
+> `agy`. Route B was never attempted.
+
 ## Why this exists
 
 Running `agy` in T3 Code's terminal works today and needs no code

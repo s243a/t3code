@@ -91,4 +91,24 @@ general-purpose remote dev server — may become concrete later.
 
 ## Status
 
-Nothing in options 2 or 3 is implemented. Option 1 needs no implementation.
+Options 2 and 3 are built; option 1 never needed building.
+
+- **Option 2 — the bridge** lives at
+  [`s243a/mcp-acp-bridge`](https://github.com/s243a/mcp-acp-bridge), a separate
+  repository so its churn stays out of this fork's diff. Route A is what
+  shipped. It went further than the minimum described above: turns travel over
+  MCP rather than being typed at a TUI, execution can be gated as an MCP tool so
+  the command text is reviewed before it runs, and permission questions arrive
+  on two channels — the tool channel, and the agent's own terminal prompts as a
+  fallback. Its `docs/design.md` carries what agy actually does, most of it
+  learned the hard way.
+- **Option 3 — the generic ACP driver** is on the `claude/generic-acp-driver`
+  branch: driver, adapter, contracts and tests, with vendor knowledge as data
+  exactly as designed here.
+- **Option 5 — the broker PTY adapter** remains documented and unbuilt.
+
+Route A's working name `MCP-to-ACP` became `mcp-acp-bridge`. The "later
+hardening" of routing built-ins through MCP is no longer hypothetical: it ships
+as the `agy-dual-gated` profile, and the reason it matters is recorded there —
+a shell granted by name cannot be reviewed, since nothing in "RunCommand"
+distinguishes `-exec stat` from `-exec rm -rf`.

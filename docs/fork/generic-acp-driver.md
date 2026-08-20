@@ -4,6 +4,13 @@
 > `docs/fork/`, this one is written to be upstream-able: it implements only the
 > open Agent Client Protocol and names no vendor in its core.
 
+> **Built**, on the `claude/generic-acp-driver` branch: `AcpDriver`,
+> `AcpAdapter`, the `AcpSettings` contract and tests. Two things the
+> implementation added that this design did not anticipate — a models file,
+> because the custom-model list stores each entry as its own normalized slug and
+> so cannot carry a display name; and `session/set_model` forwarding, since a
+> model choice that is recorded but never sent is a picker that does nothing.
+
 ## Why not reuse an existing driver
 
 Pointing T3 at an arbitrary ACP agent through an existing driver's `binaryPath`
