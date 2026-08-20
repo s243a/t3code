@@ -329,6 +329,76 @@ design was trying to avoid needing. It is still small:
 - **Mute without removing.** The equivalent of blocking a peer: keep the
   configuration, stop honouring it, while something is investigated.
 
+### Two kinds of signing, which are not the same thing
+
+"Signed plugin" has been doing two jobs above, and they answer different
+questions. Keeping them apart matters, because a plugin that is signed in one
+sense and trusted as though it were signed in the other is worse than one
+nobody signed at all.
+
+**A service key answers "is this still the thing I configured?"** It signs the
+events the plugin emits, is pinned when the plugin is added, and is checked on
+every exchange. It is trust on first use — the same decision as admitting a
+peer — and it proves continuity, not provenance. It says nothing about who
+wrote the plugin.
+
+**A publisher key answers "did this come from who it claims?"** For a plugin
+that is a URL rather than a downloaded artifact, what gets signed is a
+**manifest** — name, URL, the service key it will present, the level it asks for
+— fetched and checked against a key published somewhere the publisher controls
+and an attacker would have to compromise separately: the project's repository,
+a well-known path on its own domain, a keyserver.
+
+They compose. The publisher key establishes what the service key _should_ be;
+the service key proves you are still talking to it. Neither substitutes for the
+other, and a manifest signature checked once at install proves nothing about the
+service answering next week.
+
+### A registry that remembers, including what it uninstalled
+
+Keys should outlive the plugins that presented them, unless a person clears
+them. Retention is what turns a reinstall into a **comparison** rather than a
+fresh first impression: the same name arriving with a different key is either a
+rotation or a substitution, and only one of those should be quiet.
+
+This is `known_hosts`, and worth copying with its lessons rather than its
+implementation:
+
+- **The warning has to be specific and rare.** SSH's host-key warning is famous
+  and famously scrolled past, because it looks the same whether a key rotated or
+  a machine was replaced.
+- **Legitimate rotation needs a path that is not "delete the entry".** A
+  rotation statement signed by the _old_ key is the clean version: the plugin
+  proves it is the same publisher choosing a new key. Where that is unavailable,
+  clearing is an explicit act with the old fingerprint shown beside the new one.
+- **Removal is not forgetting.** Uninstalling a plugin drops its
+  configuration; the key stays, marked as belonging to something no longer
+  installed, until someone clears it deliberately.
+
+### Corroborating a key without inventing an authority
+
+A signing authority is the conventional answer and a poor fit here: it means a
+third party, its own compromise, and machinery out of proportion to a fabric of
+personally-owned machines.
+
+There is a cheaper source of corroboration already present. **Ask your own
+peers what key they saw.** A machine that has the peer fabric can ask the
+machines it already trusts whether they hold the same publisher key for a
+plugin, and a substitution then has to have reached all of them rather than one.
+
+Two limits, stated so this is not mistaken for a chain of trust:
+
+- **Corroboration is not authority.** Agreement among peers raises confidence;
+  it does not establish provenance, and a key nobody else has seen is not
+  thereby wrong.
+- **Correlated compromise defeats it.** Machines that all fetched from the same
+  poisoned source agree perfectly. It is evidence about independence, and only
+  as good as the independence is real.
+
+And the rule the fabric already holds applies here too: this may inform a
+person's decision, never make it. A key agreed by every peer you have is still
+a key somebody chooses to pin.
+
 ### Warning about elevation, without training people to click through
 
 `offer` and `invite` deserve a warning. Getting one to work is mostly about
