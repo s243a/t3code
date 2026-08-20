@@ -1,25 +1,32 @@
 # A peer fabric for T3 Code
 
 > **Fork-local proposal.** Specific to the `s243a/t3code` fork, not proposed for
-> upstream. Deliberately written at the level of *what it should do*; the
+> upstream. Deliberately written at the level of _what it should do_; the
 > implementation section offers options rather than a decision.
+
+> **Being built** as [`peerhailer`](https://github.com/s243a/peerhailer) — an
+> independent project rather than a T3 subproject, for the reasons under
+> _Packaging_ below. The directory, the hello protocol, the daemon and the CLI
+> exist; the covert transport and peer relaying do not. This document stays the
+> reasoning, including the arguments that were tried and dropped; that
+> repository is authoritative for what the code actually does.
 
 ## The problem, stated honestly
 
 Earlier in this project I argued against adding P2P to T3: T3 already expresses
 remoteness at the connection layer, Tailscale already solves NAT traversal, and
-mesh *routing* would buy nothing because every hub is directly reachable once an
+mesh _routing_ would buy nothing because every hub is directly reachable once an
 overlay exists.
 
 That last clause is doing more work than it can carry, and the qualifier belongs
-in the claim: routing buys nothing *where an overlay reaches every machine*. It
+in the claim: routing buys nothing _where an overlay reaches every machine_. It
 is the machines an overlay cannot reach that most need a fabric. See
 **Deferred: peer relaying** below — the question is open, not closed.
 
 What the argument does establish is that transport is not the **first** gap.
 
 The gap is **provisioning**. Before a client can connect to a machine, something
-has to be *running* on that machine. Today that means: open a shell there,
+has to be _running_ on that machine. Today that means: open a shell there,
 install T3 or the broker, start it, note the address, configure it. T3 has one
 productized escape from this — desktop SSH launch, which starts a remote T3
 server and pairs it — but it is desktop-only, SSH-only, and T3-server-only.
@@ -44,14 +51,14 @@ re-pair because they changed networks, the design has failed.
 **A peer offers capabilities, not access.** This is the load-bearing principle
 and the one most easily lost. "This machine will run a broker for you" is a
 categorically different grant from "this machine will run whatever you send."
-The fabric should carry *specific offers* — run a broker, run a T3 server, run
+The fabric should carry _specific offers_ — run a broker, run a T3 server, run
 this named agent — each independently grantable and revocable. A peer that can
 be asked to run arbitrary commands is a remote shell wearing a fabric costume,
 and every safeguard built above it is theatre.
 
 This mirrors a decision already made well elsewhere in this project:
-`BROKER_TERM_CMDS=agy` is narrow *because naming the command is the security
-boundary*. The fabric should inherit that instinct rather than re-open the
+`BROKER_TERM_CMDS=agy` is narrow _because naming the command is the security
+boundary_. The fabric should inherit that instinct rather than re-open the
 question.
 
 **Trust should be explicit, per-machine, and revocable.** Adding a peer is a
@@ -140,7 +147,7 @@ to a route.
 
 ## Discovery: a hello protocol
 
-Peers announce themselves and answer one question: *who else do you know?* A
+Peers announce themselves and answer one question: _who else do you know?_ A
 client asks a peer, receives its list, and asks the peers on it in turn. No
 central registry, and no new transport — the exchange rides whatever route
 already reaches each peer.
@@ -152,7 +159,7 @@ are cache.
 
 Three properties this must keep, each easy to lose:
 
-**Trust is not transitive.** A peer list is a list of *candidates*, not of
+**Trust is not transitive.** A peer list is a list of _candidates_, not of
 admitted machines. Peer A naming B tells you B exists; admitting B stays a
 deliberate act with a visible moment of consent. Gossip that also carries trust
 turns one compromised peer into a way to introduce arbitrary machines.
@@ -170,16 +177,16 @@ nothing else — no version, no name, no hint that it guessed the protocol.
 
 How much nothing is a setting, because the postures have different costs:
 
-| Posture | An unauthorized caller sees | Cost |
-| --- | --- | --- |
-| `diagnostic` | why it was rejected | confirms the peer, names the mechanism |
-| `anonymous` *(default)* | a connection that opens and closes | confirms something listens |
-| `covert` | nothing; the packet is not answered | needs a transport that allows it |
+| Posture                 | An unauthorized caller sees         | Cost                                   |
+| ----------------------- | ----------------------------------- | -------------------------------------- |
+| `diagnostic`            | why it was rejected                 | confirms the peer, names the mechanism |
+| `anonymous` _(default)_ | a connection that opens and closes  | confirms something listens             |
+| `covert`                | nothing; the packet is not answered | needs a transport that allows it       |
 
 `anonymous` is the default because it is honest about what a normal TCP service
 can achieve. `covert` is the stronger posture and the one with a prerequisite:
 by the time a listener has accepted a connection, the handshake has already
-answered. Saying nothing therefore has to happen *before* accept, which means
+answered. Saying nothing therefore has to happen _before_ accept, which means
 one of
 
 - a transport where the first packet carries authentication and unauthenticated
@@ -194,9 +201,10 @@ one of
   The catch is what silence costs above it: no ordering, no reliability, no
   congestion control, and a handshake to design that resists both forgery and
   CPU exhaustion. Reaching that conclusion is mostly a description of WireGuard,
-  so the sane reading is to *run over* an authenticated UDP transport rather
+  so the sane reading is to _run over_ an authenticated UDP transport rather
   than write one — which is the same "meshes are interchangeable backends"
   argument arriving again, now for a security property rather than reachability.
+
 - a packet filter in front of the process, opened by prior authorization, or
 - not listening at all, which relaying makes possible and which is the only
   option that costs nothing to run.
@@ -219,7 +227,7 @@ peer changing privacy mode drop its TCP listener. The channel you already trust
 builds the channel that replaces it, and no key material ever needs a side
 band.
 
-Enrolment over the noisy channel is the *convenient* path, not the only one. A
+Enrolment over the noisy channel is the _convenient_ path, not the only one. A
 peer whose keys and endpoints arrive some other way — configuration management,
 an image it was built from, a tailnet it already sits on, someone pasting them
 in — can be born covert and never listen at all. That is strictly better where
@@ -232,11 +240,11 @@ get wrong.
 Where keys travel by USB drive or similar, the useful design is not "encrypt the
 keys" but **do not move a private key at all.** WireGuard private keys can be
 generated on the node that will use them, and only public keys need to travel;
-public keys are not secret. What needs protecting is the *authorisation* — proof
+public keys are not secret. What needs protecting is the _authorisation_ — proof
 that this new public key is admitted — which can be one-time and expiring.
 
 So an enrolment bundle carries public keys and endpoints, which need no
-*cryptographic* secrecy, plus a single-use secret that is worthless once spent.
+_cryptographic_ secrecy, plus a single-use secret that is worthless once spent.
 
 Encrypt the whole bundle to a passphrase regardless — including the public parts.
 A public key is safe to publish, but a bundle listing a dozen machines and where
@@ -272,12 +280,12 @@ Two rules keep a mode change from being a disconnection:
   be confirmed rolls back rather than completing, because from the inside,
   "going covert" and "silently disconnecting everyone" look identical.
 
-  Lead with the count, since that is what a person actually decides on: *"12 of
-  15 trusted peers stay reachable (80%)."* Three things keep that number from
+  Lead with the count, since that is what a person actually decides on: _"12 of
+  15 trusted peers stay reachable (80%)."_ Three things keep that number from
   flattering itself.
 
   **Do not fold relay-reachable peers into the headline.** They are reachable
-  *while some third peer is up*, which is a dependency, not a property. Count
+  _while some third peer is up_, which is a dependency, not a property. Count
   them separately — "9 directly, 3 while `sol` is up" — or a peer discovers the
   difference on the day `sol` reboots.
 
@@ -293,10 +301,11 @@ Two rules keep a mode change from being a disconnection:
   The same list stays available after the switch, and matters more there. A
   covert peer fails silently by design — nothing answers, which is also what
   working looks like — so a standing view of who is reachable is the only
-  feedback left. It should show what is *verified now* rather than what was
+  feedback left. It should show what is _verified now_ rather than what was
   predicted beforehand, and say plainly where the two diverge: a peer that was
   expected to survive and did not is the signal to roll back, and the one thing
   a confirmation dialog dismissed an hour ago can no longer tell anyone.
+
 - **Keep a way back in.** A peer that goes covert and then loses its
   configuration is unreachable by design, and the failure is invisible — no
   port answers, which is exactly what success looks like. It needs a local
@@ -361,7 +370,7 @@ since T3 is a pnpm/TypeScript workspace and anything else would force the
 protocol route. Two constraints follow, and they matter more than the language
 choice:
 
-- **No Effect in the core.** T3 runs an Effect v4 *beta*; taking that dependency
+- **No Effect in the core.** T3 runs an Effect v4 _beta_; taking that dependency
   would tie this tool's maintenance to T3's upgrade schedule, which is the exact
   coupling being avoided. Plain async, with any Effect wrapping done in the T3
   adapter.
@@ -374,6 +383,14 @@ The natural attachment point on the T3 side already exists:
 remote environments" when empty. A picker fed by the directory belongs there,
 and beside the pairing-token field, which is where a user currently transcribes
 an address by hand.
+
+As built, `peerhailer` takes that shape: plain JavaScript with JSDoc types and
+no dependencies outside Node, so it installs on a small box; a `hail` CLI and a
+daemon, either usable without the other; a library entry point for embedding;
+and a loopback-bound HTTP API, which is what a T3 plugin should talk to. The
+deviation from "TypeScript" above is deliberate — no build step matters more
+than annotations for a daemon meant to run on whatever hardware is to hand, and
+JSDoc keeps it importable from TypeScript regardless.
 
 ## Deferred: peer relaying
 
@@ -389,7 +406,7 @@ is the ordinary state of a mixed home network — relaying is not a luxury:
   Tailscale will not install is exactly the machine worth reaching remotely. If
   a peer on its LAN can reach both it and you, relaying through that peer is the
   only path.
-- **Bridging networks.** A peer joined to a tailnet and to a private mesh *is* a
+- **Bridging networks.** A peer joined to a tailnet and to a private mesh _is_ a
   relay. Calling those "two records with different transports" describes the
   directory correctly and quietly assumes someone carries bytes across.
 - **Policy, not just reachability.** ACLs can permit A↔B and deny you↔B.
@@ -398,7 +415,7 @@ is the ordinary state of a mixed home network — relaying is not a luxury:
   by taste rather than principle.
 
 Relaying also buys a security property that broadcast discovery cannot, and this
-may be the stronger argument. A peer introduced *through* peers it already knows
+may be the stronger argument. A peer introduced _through_ peers it already knows
 never has to advertise itself: no mDNS announcement, no service published to the
 segment, and — if introductions and traffic both travel over connections it
 dialled — **no inbound listener at all**. What is not listening cannot be
@@ -444,7 +461,7 @@ has the seam: `remote.md` §Endpoint providers exists so contributors can supply
 endpoints without touching the core model, and
 `apps/desktop/src/backend/tailscaleEndpointProvider.ts` is the worked example.
 
-*Assumes:* everything is on one tailnet. *Gets:* almost all the value for a
+_Assumes:_ everything is on one tailnet. _Gets:_ almost all the value for a
 fraction of the work, and it composes with what ships today. **This is where I
 would start**, and it may be where it ends.
 
@@ -453,14 +470,14 @@ out to a coordination point and receive capability requests. Solves the case
 where a machine can reach the network but nothing can reach it, without any
 overlay.
 
-*Assumes:* a coordination point exists and is trusted. *Costs:* that point is
+_Assumes:_ a coordination point exists and is trusted. _Costs:_ that point is
 now infrastructure to run, and it sees metadata about every machine.
 
 **3. Direct peer links.** Explicit pairwise links, each established once and
 remembered — closest to "P2P" in the usual sense, and the most work: NAT
 traversal, key management, liveness, all owned rather than borrowed.
 
-*Worth it only if* the fabric must work for machines that will never share an
+_Worth it only if_ the fabric must work for machines that will never share an
 overlay, which is a requirement worth confirming before paying for it.
 
 ## How to know it worked
@@ -476,11 +493,11 @@ the broker'` for that case, the larger version will not beat it either.
 
 ## Relationship to the rest of this fork
 
-- [mcp-acp-bridge](https://github.com/s243a/mcp-acp-bridge) is what gets *run*.
+- [mcp-acp-bridge](https://github.com/s243a/mcp-acp-bridge) is what gets _run_.
   The fabric is how it gets started somewhere else.
 - [agy-broker-pty.md](./agy-broker-pty.md) — the PTY transport, shelved because
   T3 already covers cross-host connection. The fabric does not revive it; they
   address different layers.
 - Command allow/block lists belong to the thing being started, not the fabric.
-  A capability grant says *what may run*; the broker's own list says *what that
-  thing may then do*. Keeping those separate keeps both comprehensible.
+  A capability grant says _what may run_; the broker's own list says _what that
+  thing may then do_. Keeping those separate keeps both comprehensible.
