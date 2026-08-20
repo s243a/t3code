@@ -262,12 +262,81 @@ entered deliberately. Nothing scanned, nothing auto-registered. A tool that
 decides who may talk to your machines should not open a page because it appeared
 somewhere.
 
+## Plugins need trust levels, which means a plugin manager
+
+Once a plugin may do more than display a page, "is it installed" stops being one
+question. Showing a directory and handing T3 a credential are not the same
+grant, and a single on/off switch makes the smaller one carry the weight of the
+larger.
+
+So a plugin holds a **level**, and each capability names the level it requires.
+This is the same model as the peer fabric's capability profiles, arrived at from
+the other end, which is some evidence it is the right shape.
+
+| Level              | May                                                                            | Risk if the plugin is compromised              |
+| ------------------ | ------------------------------------------------------------------------------ | ---------------------------------------------- |
+| `view` _(default)_ | be opened, and nothing else                                                    | it shows you something false                   |
+| `observe`          | read non-credential state: which environments exist, their names and addresses | it learns your machine list                    |
+| `offer`            | add an environment, with a credential **for that machine**                     | it lures you into connecting somewhere hostile |
+| `invite`           | ask T3 to mint a **new** pairing credential for _this_ machine                 | it can let others in here                      |
+
+Default is `view`, and defaulting anywhere else would make the level cosmetic.
+
+### Why "read" outranks "store"
+
+The instinct is that writing is more dangerous than reading. Here it is the
+other way round, and the reason is what each grant produces.
+
+**Storing** gives this T3 outbound authority over a machine the plugin chose. It
+grants nobody access here, it is visible in the environment list, and it is
+undone by deleting an entry. At worst you were pointed somewhere you should not
+go.
+
+**Reading** takes authority the user already established and hands it to
+software. One extracted credential may cover machines the plugin never
+discovered and was never told about, it works after the plugin is removed, and
+nothing about it appears in the interface. That is exfiltration, and it does not
+undo.
+
+### A refinement: mint new, never read existing
+
+There is a legitimate need behind "read token" — inviting another machine to
+connect to _this_ one means a credential has to leave here. But that need is met
+by **minting a fresh one**, scoped and short-lived, at the moment of the
+invitation.
+
+So the top level is `invite`, not `extract`: a plugin may ask T3 to _make_ a
+credential for this environment. It may never read the ones already stored.
+Those cover other machines and were established for other reasons, and no
+integration needs them.
+
+Which removes the exfiltration primitive entirely while keeping the feature.
+A compromised plugin at `invite` can let someone into this machine, which is
+serious and is why it is the highest level — but it cannot quietly drain the
+access you already had.
+
+### What the manager has to do
+
+A level per plugin implies somewhere to set it, which is the plugin manager this
+design was trying to avoid needing. It is still small:
+
+- **List, add, remove.** Name, URL, level, and the signing key pinned when the
+  plugin was configured.
+- **Change a level deliberately**, with the consequence stated in the interface
+  rather than in documentation — `invite` should say that it can let other
+  machines in.
+- **Show what a plugin did.** Environments it offered, credentials it asked to
+  have minted, when, and whether anyone connected. A grant nobody can review is
+  a grant nobody can revoke with confidence.
+- **Mute without removing.** The equivalent of blocking a peer: keep the
+  configuration, stop honouring it, while something is investigated.
+
 ## What would change in T3
 
 Deliberately small, because the value is in what already exists.
 
-1. **A plugin record** in settings: name, URL, icon, and the scopes it may be
-   given. Contracts already carry provider settings of this shape.
+1. **A plugin record** in settings: name, URL, icon, pinned signing key, and its
+   trust level. Contracts already carry provider settings of this shape.
 2. **A button, and a place for it.** Most naturally beside the existing browser
    surface, since that is the machinery being reused.
 3. **A partition per plugin**, named so `isBrowserPartition` accepts it and one
@@ -283,7 +352,7 @@ fork that wants to keep taking upstream changes.
 ## What this is not
 
 **Not a plugin API.** Nothing runs inside T3. A plugin cannot add a provider, a
-command, or a view; it gets a rectangle and an API token. That is a real ceiling
+command, or a view; it gets a rectangle and whatever its level permits. That is a real ceiling
 and the reason it is cheap — plugins of this kind cannot break T3, because they
 are not in it.
 
