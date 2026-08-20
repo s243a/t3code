@@ -89,6 +89,23 @@ Retained because the constraint analysis is accurate and the narrow remaining
 argument — privilege surface, a machine where you want `agy` reachable but not a
 general-purpose remote dev server — may become concrete later.
 
+### 6. Plugin GUIs — design
+
+[plugin-guis.md](./plugin-guis.md)
+
+A button that opens a page, rather than a plugin API. T3 has no plugin system
+and adding one is a large change; but most things people want to add are
+interfaces to something already running elsewhere, and those need only a way in
+and a way to be opened.
+
+Reuses what exists: the sandboxed webview, an API whose CORS is already `*`
+because bearer scopes do the authorising, and `executeJavaScript` — which is how
+the page gets a short-lived, narrowly-scoped token without ever asking for one.
+The host reaches into the page; the page never reaches into the host.
+
+First consumer is [peerhailer](https://github.com/s243a/peerhailer), which
+already serves such a page and needs no changes to be used this way.
+
 ## Status
 
 Options 2 and 3 are built; option 1 never needed building.

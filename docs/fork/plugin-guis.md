@@ -1,0 +1,183 @@
+# Plugin GUIs in T3 Code
+
+> **Fork-local design.** Specific to the `s243a/t3code` fork, not proposed for
+> upstream. Written at the level of _what it should do and why_; the
+> implementation section names the smallest change that would work.
+
+## The problem
+
+T3 has no plugin system. Providers are a static array — `BUILT_IN_DRIVERS`,
+resolved at build time, each driver's service requirements satisfied by the
+runtime layer's type — and nothing anywhere loads code at runtime. So "add a
+plugin" today means editing T3's source, which is a fork patch rather than a
+plugin, and every such patch is one more thing to carry across an upstream
+rebase.
+
+Meanwhile the things people want to add — a peer directory, a tunnel manager, a
+file-transfer view — are mostly _interfaces to something already running
+elsewhere_. They do not need to be inside T3. They need a way in and a way to be
+opened.
+
+That suggests the cheapest useful integration point is not a plugin API at all.
+It is **a button that opens a page**.
+
+## What T3 already has
+
+Enough that this is mostly assembly rather than construction.
+
+**An embedded browser, already sandboxed.** `DesktopWindow.ts` intercepts every
+webview attachment:
+
+```js
+window.webContents.on("will-attach-webview", (event, webPreferences, params) => {
+  if (!previewManager.isBrowserPartition(params.partition)) {
+    event.preventDefault();
+    return;
+  }
+  webPreferences.sandbox = true;
+  webPreferences.nodeIntegration = false;
+  webPreferences.nodeIntegrationInSubFrames = false;
+  webPreferences.contextIsolation = false;
+});
+```
+
+A page opened this way runs in its own sandboxed process with no Node
+integration, in a partition T3 assigns, and cannot reach T3's DOM, React tree,
+stores, or `window.desktopBridge`. An attachment with an unrecognised partition
+is refused outright, so a webview cannot be conjured by injecting markup.
+
+**An API that expects to be called from elsewhere.** `httpCors.ts` sets
+`access-control-allow-origin: *` and allows the `authorization` header. The
+wildcard is safe precisely because the bearer token authorises rather than the
+origin.
+
+**Scopes that are enforced centrally and separable.**
+`RpcAuthorization.ts:129` throws at startup for any RPC without a declared
+scope — the same instinct as refusing a plugin route that declares no
+capability. And the scope list is fine-grained enough to be useful:
+`orchestration:read`, `orchestration:operate`, `terminal:operate`,
+`review:write`, `access:read`, `access:write`, `relay:*`.
+
+**A way to reach into a page.** `PreviewAutomationHosts.tsx` calls
+`webview.executeJavaScript(...)`.
+
+## The idea
+
+The trust boundary is asymmetric: the host can reach into the page, the page
+cannot reach into the host. Rather than working around that, use it.
+
+**T3 opens the page, then injects the credential.** The plugin GUI never asks
+for a token, never stores one, and has no endpoint to fetch one from. When T3
+opens the window it injects a short-lived, narrowly-scoped bearer token into the
+page. The page then talks to T3's ordinary API with that token, and to whatever
+local service it fronts on its own address.
+
+This is the mint-on-demand pattern from the peer-fabric work, applied across a
+different boundary: **the directory holds a grant, the credential is made when
+it is needed**, and it stops working shortly afterwards. A "fetch token"
+endpoint would be a way to obtain a credential by asking; there is no need for
+one when the host hands it over as it opens the door.
+
+```
+  ┌──────────────┐  opens webview, injects scoped token   ┌───────────────┐
+  │   T3 Code    │ ────────────────────────────────────▶  │  plugin page  │
+  │              │                                        │  (sandboxed)  │
+  │   HTTP API   │ ◀──── calls with that token ────────── │               │
+  └──────────────┘                                        └───────┬───────┘
+                                                                  │ loopback
+                                                          ┌───────▼───────┐
+                                                          │ local service │
+                                                          │ (peerhailer…) │
+                                                          └───────────────┘
+```
+
+Note which arrows do _not_ exist. The local service never talks to T3, and T3
+never talks to the local service. Each is independently useful, and neither
+needs credentials for the other. The page is the only thing that knows both, and
+it is the most disposable part.
+
+## Rules
+
+**Scope down, always.** A peer-directory plugin needs `access:read` at most; it
+has no business holding `terminal:operate`. Injecting a standard-scoped token
+because it is convenient hands a web page a remote shell. Token exchange already
+exists (`AuthTokenExchangeGrantType`) and is the mechanism for narrowing.
+
+**Bind the token to the window, and expire it.** Minutes, not the session. A
+token that outlives the window it was minted for is a stored credential, which
+is the thing this design is avoiding.
+
+**Each plugin gets its own partition.** Storage, cookies and service workers
+stay separate, so one plugin page cannot read another's state — and a
+compromised plugin cannot reach the browser state of the rest.
+
+**Watch the direction of "store".** A plugin _reading_ T3 is the easy half. A
+plugin _writing_ into T3 — adding a machine T3 will later trust — is where care
+belongs. The narrow version records **where a machine is**, and lets T3 mint its
+own credential when someone connects. T3 accepting a credential _from_ a page is
+the shape to refuse: it makes the page's compromise T3's compromise.
+
+**The plugin list is configuration, not discovery.** A name, a URL, an icon,
+entered deliberately. Nothing scanned, nothing auto-registered. A tool that
+decides who may talk to your machines should not open a page because it appeared
+somewhere.
+
+## What would change in T3
+
+Deliberately small, because the value is in what already exists.
+
+1. **A plugin record** in settings: name, URL, icon, and the scopes it may be
+   given. Contracts already carry provider settings of this shape.
+2. **A button, and a place for it.** Most naturally beside the existing browser
+   surface, since that is the machinery being reused.
+3. **A partition per plugin**, named so `isBrowserPartition` accepts it and one
+   plugin cannot read another's storage.
+4. **Token minting on open**: exchange the session's credential for one narrowed
+   to the plugin's declared scopes, short-lived, injected via the existing
+   `executeJavaScript` path.
+
+That is a handful of files, and no change to the provider model, the
+orchestration layer, or anything upstream rewrites often — which matters for a
+fork that wants to keep taking upstream changes.
+
+## What this is not
+
+**Not a plugin API.** Nothing runs inside T3. A plugin cannot add a provider, a
+command, or a view; it gets a rectangle and an API token. That is a real ceiling
+and the reason it is cheap — plugins of this kind cannot break T3, because they
+are not in it.
+
+**Not a way to run untrusted code safely.** The sandbox is Electron's, the token
+is real, and a malicious plugin page can do whatever its scopes permit. Adding a
+plugin is a decision of the same weight as installing anything else; the scoping
+bounds the damage rather than preventing it.
+
+**Not mobile.** Webviews are a desktop mechanism. The web client would need an
+iframe with its own analysis — cross-origin by default, which is stricter, but
+`executeJavaScript` does not exist there, so the token would have to arrive
+another way (a fragment on the URL, consumed and stripped, as pairing already
+does).
+
+## First consumer
+
+[peerhailer](https://github.com/s243a/peerhailer) already serves a
+self-contained page on loopback, showing which machines are known, which are
+reachable, and what each is permitted. Pointing a T3 webview at it is the whole
+integration on this side, and requires nothing of peerhailer at all.
+
+The step after that — a peer picker beside the pairing-token field in
+`ConnectionsSettings.tsx`, fed by peerhailer's local API — is where the two stop
+being adjacent and start being useful together. It needs the "store" direction
+above, and should not be attempted before that direction is settled.
+
+## Open questions
+
+- **Where does the button live?** Beside the browser tabs, in Settings, or in
+  the command palette. Probably all three eventually, which the "hit every
+  surface" rule would insist on anyway.
+- **Should a plugin be able to request a scope it was not configured with?**
+  Simplest answer is no, and re-configuring is cheap. A prompt-on-demand flow is
+  more flexible and one more thing to get wrong.
+- **What happens when the page is unreachable?** A plugin fronting a local
+  service will often open before that service is running. It should look like a
+  service that is down, not like T3 is broken.
