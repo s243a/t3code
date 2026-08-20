@@ -141,6 +141,42 @@ to have a key attached, and the honest risk is not escalation but **being lured
 somewhere hostile** — a compromised plugin could offer an environment belonging
 to an attacker, and a user who opens it sends their prompts and code into it.
 
+### Carrying it this way is safer than what people do now
+
+Worth saying, because the feature reads as convenience and is not only that.
+
+Today a pairing token gets from one machine to another by being **copied and
+pasted**, and that path is worse than it looks:
+
+- **Any process can read the clipboard.** On the usual desktops it needs no
+  permission and leaves no trace.
+- **Clipboard managers keep history**, often on disk, usually unencrypted,
+  frequently searchable — a credential that was meant to be transient becomes a
+  file.
+- **It rarely stays on one machine.** Getting a token from a box in another room
+  to a laptop generally means a chat message or an email, which puts a
+  credential on somebody else's server, in their logs and their backups.
+- **Screens are shared and photographed**, and the token is on one.
+
+The peer path is better on every one of those. The credential travels over a
+channel already authenticated by key between two machines that have each
+admitted the other; it is minted on demand, short-lived, and stored nowhere in
+between; it never reaches a clipboard, a chat log, or a third party; and it
+cannot be delivered to the wrong machine, because the channel knows which
+machine it is talking to.
+
+Two caveats, so this is not oversold:
+
+**An intermediary must not be able to read it.** Delivered directly between two
+peers this holds already. Carried by a relay it does not, unless the relay is a
+dumb forwarder over an end-to-end encrypted channel — which the peer-fabric
+design requires of relaying for exactly this reason.
+
+**Automation removes a human check.** Copy-and-paste has one virtue: a person
+sees the thing being moved and where it is going. An automatic path removes that
+glance, which is why provenance and a deliberate connect step below are not
+polish. They are what replaces the check that automation took away.
+
 That is a real risk and a different one, and it is answered differently:
 
 - **Provenance travels with the environment.** It arrives named as the peer it
