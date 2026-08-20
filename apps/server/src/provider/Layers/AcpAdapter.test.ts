@@ -89,6 +89,25 @@ describe("AcpAdapter", () => {
     // *error* rather than dying leaves the request unsettled — the turn emits
     // `turn.started` and nothing else. Agent death is covered below; the polite
     // refusal is not, and needs a fix in the runtime's request correlation.
+    it.effect("the agent's text reaches the event stream", () =>
+      Effect.gen(function* () {
+        // The whole point of a turn: an answer the user can read. A turn that
+        // completes with no content looks to the client exactly like silence.
+        const { collected } = yield* runTurn("ok");
+        const said = collected
+          .map((event) => {
+            const payload = event.payload as { delta?: unknown } | undefined;
+            return typeof payload?.delta === "string" ? payload.delta : "";
+          })
+          .join("");
+        assert.include(
+          said,
+          "hello from stub",
+          `no assistant text in: ${collected.map((e) => e.type).join(", ")}`,
+        );
+      }),
+    );
+
     it.effect(
       "a failing turn still reports a terminal event instead of hanging",
       () =>
