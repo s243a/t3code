@@ -322,14 +322,45 @@ design was trying to avoid needing. It is still small:
 
 - **List, add, remove.** Name, URL, level, and the signing key pinned when the
   plugin was configured.
-- **Change a level deliberately**, with the consequence stated in the interface
-  rather than in documentation — `invite` should say that it can let other
-  machines in.
+- **Change a level deliberately, and warn when it is elevated.** See below.
 - **Show what a plugin did.** Environments it offered, credentials it asked to
   have minted, when, and whether anyone connected. A grant nobody can review is
   a grant nobody can revoke with confidence.
 - **Mute without removing.** The equivalent of blocking a peer: keep the
   configuration, stop honouring it, while something is investigated.
+
+### Warning about elevation, without training people to click through
+
+`offer` and `invite` deserve a warning. Getting one to work is mostly about
+restraint, since a warning shown too often is a warning nobody reads — and the
+habit it builds transfers to the one that mattered.
+
+**Warn on the change, not on the use.** Raising a plugin to `invite` is a
+decision; every subsequent action under it is a consequence of a decision
+already made. Prompting each time trains people to dismiss without reading, and
+the dismissal becomes reflex precisely when it should not be.
+
+**Say the consequence, not the category.** "Grants elevated permissions" tells
+nobody anything. _"This plugin will be able to let other machines connect to
+this one"_ is a sentence a person can weigh, and weighing it is the entire
+point of asking.
+
+**Do not warn about `view` or `observe`.** Warning on the harmless levels is
+what makes the warnings worthless. A dialog that appears for everything teaches
+that dialogs mean nothing.
+
+**Make the safe choice the resting one.** The dialog opens with the change not
+yet made; nothing should be pre-selected toward elevation, and nothing should
+proceed on Enter.
+
+**Warn again if the plugin changed.** A new URL or a different signing key is a
+different plugin wearing a familiar name, and the level it inherited was granted
+to something else. Re-pinning is a re-decision.
+
+**Keep it visible afterwards.** A one-time dialog that leaves no trace is a
+grant nobody can review later, and the list is where somebody will look. An
+elevated plugin should be marked as elevated wherever it appears — the warning
+is the moment, the marking is the memory.
 
 ## What would change in T3
 
