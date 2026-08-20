@@ -217,6 +217,24 @@ Two rules keep a mode change from being a disconnection:
   peer that holds both channels, and lost until enrolled. A switch that cannot
   be confirmed rolls back rather than completing, because from the inside,
   "going covert" and "silently disconnecting everyone" look identical.
+
+  Lead with the count, since that is what a person actually decides on: *"12 of
+  15 trusted peers stay reachable (80%)."* Three things keep that number from
+  flattering itself.
+
+  **Do not fold relay-reachable peers into the headline.** They are reachable
+  *while some third peer is up*, which is a dependency, not a property. Count
+  them separately — "9 directly, 3 while `sol` is up" — or a peer discovers the
+  difference on the day `sol` reboots.
+
+  **A percentage weighs a peer you use hourly the same as one you added months
+  ago and forgot.** Name the losses, and order them by how recently they were
+  used; 80% is reassuring right up until the missing 20% is the machine running
+  your agent.
+
+  **It is a snapshot of what can be verified now.** Status learned second-hand
+  is a hint, so the figure should say what it was measured from and when, rather
+  than presenting an inference as a fact.
 - **Keep a way back in.** A peer that goes covert and then loses its
   configuration is unreachable by design, and the failure is invisible — no
   port answers, which is exactly what success looks like. It needs a local
