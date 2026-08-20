@@ -235,6 +235,14 @@ Two rules keep a mode change from being a disconnection:
   **It is a snapshot of what can be verified now.** Status learned second-hand
   is a hint, so the figure should say what it was measured from and when, rather
   than presenting an inference as a fact.
+
+  The same list stays available after the switch, and matters more there. A
+  covert peer fails silently by design — nothing answers, which is also what
+  working looks like — so a standing view of who is reachable is the only
+  feedback left. It should show what is *verified now* rather than what was
+  predicted beforehand, and say plainly where the two diverge: a peer that was
+  expected to survive and did not is the signal to roll back, and the one thing
+  a confirmation dialog dismissed an hour ago can no longer tell anyone.
 - **Keep a way back in.** A peer that goes covert and then loses its
   configuration is unreachable by design, and the failure is invisible — no
   port answers, which is exactly what success looks like. It needs a local
