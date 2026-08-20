@@ -202,6 +202,21 @@ peer changing privacy mode drop its TCP listener. The channel you already trust
 builds the channel that replaces it, and no key material ever needs a side
 band.
 
+Enrolment over the noisy channel is the *convenient* path, not the only one. A
+peer whose keys and endpoints arrive some other way — configuration management,
+an image it was built from, a tailnet it already sits on, someone pasting them
+in — can be born covert and never listen at all. That is strictly better where
+it is practical: the enrolment path leaves a window in which the peer was
+discoverable and answering, and a machine that never opens one has no window to
+get wrong.
+
+It should be supported and it should not be the default. Manual key exchange is
+exactly the friction that makes a security feature go unused, and a fabric whose
+safe path requires it will mostly be run on its unsafe one. Note also that a
+born-covert peer has no fallback if its configuration is wrong — there was never
+a noisy channel to fall back to — so the local recovery path stops being a nicety
+for those.
+
 Two rules keep a mode change from being a disconnection:
 
 - **Show the reckoning, then ask.** Before a peer stops listening, the user sees
