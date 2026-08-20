@@ -83,14 +83,31 @@ layer over primitives that keep working.
 
 The negative space matters as much as the goal.
 
-- **Not a router.** Peers do not relay for one another. If A cannot reach B,
-  that is a network problem to fix at the network layer, not to paper over with
-  application-level forwarding. Relaying re-introduces the second runtime
-  boundary T3's architecture deliberately avoids, and it makes trust transitive
-  through the back door.
+Worth stating the threat model first, because it decides how much of this is
+warranted: **the machines in one of these fabrics almost always belong to one
+person.** The adversary is not another user of the fabric; it is the network
+those machines sit on and whatever else is on it. So the postures above are a
+choice the owner makes per machine — `anonymous` where the default is fine, and
+`covert` for the one box that is exposed or that matters most — rather than a
+policy the fabric imposes on them.
+
+- **Not a router — in the first prototype.** This began as a flat "peers do not
+  relay for one another", on the grounds that unreachability is a network
+  problem to fix at the network layer. That argument was too strong and is now
+  reopened under **Deferred: peer relaying**; the concern it was protecting —
+  that relaying must not make trust transitive — survives as a constraint on any
+  design rather than as a reason to refuse one. The prototype still ships
+  without it.
 - **Not a scheduler.** No placement decisions, no "run this wherever is free."
   The user names the machine. Choosing for them requires a model of their
   machines the fabric will not have and should not pretend to.
+- **Not an anonymity network.** Sharing keys over an external channel — Tor is
+  the obvious candidate — solves a problem this does not have. The peers here
+  belong to one person, so either they already share an authenticated channel or
+  that person has access to both ends; there is no case where two endpoints need
+  to find each other with no prior trust and no safe path. It would be a fine
+  thing to have built and a poor thing to need, and it is recorded here so that
+  the appeal of building it does not get mistaken for a requirement.
 - **Not a new identity system.** It should ride whatever the user already
   authenticates with. A fresh credential store is a fresh thing to leak, rotate,
   and lose.
