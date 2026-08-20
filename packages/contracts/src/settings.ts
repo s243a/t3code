@@ -460,6 +460,112 @@ export const GrokSettings = makeProviderSettingsSchema(
 );
 export type GrokSettings = typeof GrokSettings.Type;
 
+/**
+ * Settings for the generic ACP driver.
+ *
+ * Deliberately describes *any* agent that speaks the Agent Client Protocol
+ * rather than a particular product: how to launch it, what the client will do
+ * on its behalf, and what to show when it advertises no models. Vendor
+ * specifics belong in a `profile`, which may only supply values a user could
+ * have typed here by hand — anything needing code is an extension, not a
+ * profile.
+ */
+export const AcpSettings = makeProviderSettingsSchema(
+  {
+    enabled: Schema.Boolean.pipe(
+      Schema.withDecodingDefault(Effect.succeed(false)),
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
+    command: TrimmedString.pipe(
+      Schema.withDecodingDefault(Effect.succeed("")),
+      Schema.annotateKey({
+        title: "Command",
+        description: "Executable that speaks ACP over stdio.",
+        providerSettingsForm: { placeholder: "my-acp-agent", clearWhenEmpty: "omit" },
+      }),
+    ),
+    args: Schema.Array(Schema.String).pipe(
+      Schema.withDecodingDefault(Effect.succeed([])),
+      Schema.annotateKey({
+        title: "Arguments",
+        description: "Arguments passed to the command on launch.",
+      }),
+    ),
+    env: Schema.Record(Schema.String, Schema.String).pipe(
+      Schema.withDecodingDefault(Effect.succeed({})),
+      Schema.annotateKey({
+        title: "Environment",
+        description: "Extra environment variables for the agent process.",
+      }),
+    ),
+    authMethodId: TrimmedString.pipe(
+      Schema.withDecodingDefault(Effect.succeed("")),
+      Schema.annotateKey({
+        title: "Auth method",
+        description:
+          "Auth method to present at startup. Leave empty for agents with no authentication step.",
+        providerSettingsForm: { placeholder: "", clearWhenEmpty: "omit" },
+      }),
+    ),
+    // Hidden, and false, until the adapter serves them. A visible toggle that
+    // only changes what the agent believes is worse than no toggle: the agent
+    // is told it may ask, and its first request fails as methodNotFound partway
+    // through work it has already begun.
+    //
+    // The capability itself is not missing — it is somewhere better. The bridge
+    // offers file and command tools over MCP, where every call is held, shown
+    // with its arguments and approved before it runs. The fields stay so that
+    // an adapter which does serve these can turn them back on.
+    filesystemAccess: Schema.Boolean.pipe(
+      Schema.withDecodingDefault(Effect.succeed(false)),
+      Schema.annotateKey({
+        title: "Serve filesystem requests",
+        description:
+          "Let the agent ask this client to read and write files on its behalf. Not yet served; use an agent that exposes file tools over MCP, where each call is reviewed.",
+        providerSettingsForm: { hidden: true },
+      }),
+    ),
+    terminalAccess: Schema.Boolean.pipe(
+      Schema.withDecodingDefault(Effect.succeed(false)),
+      Schema.annotateKey({
+        title: "Serve terminal requests",
+        description:
+          "Let the agent ask this client to run commands on its behalf. Not yet served; T3 has no surface for an agent-owned terminal.",
+        providerSettingsForm: { hidden: true },
+      }),
+    ),
+    profile: TrimmedString.pipe(
+      Schema.withDecodingDefault(Effect.succeed("")),
+      Schema.annotateKey({
+        title: "Profile",
+        description: "Named preset supplying the fields above for a known agent.",
+        providerSettingsForm: { placeholder: "", clearWhenEmpty: "omit" },
+      }),
+    ),
+    // A file rather than a settings list, because the names are the point: a
+    // custom model entered in the UI is stored as its own normalized slug, so
+    // "Gemini 3.7 Flash" cannot survive as a label. Models read from here are
+    // presented as the agent's own, keeping id and display name separate.
+    modelsPath: TrimmedString.pipe(
+      Schema.withDecodingDefault(Effect.succeed("")),
+      Schema.annotateKey({
+        title: "Models file",
+        description:
+          "JSON file listing the models this agent offers. Each entry is an id the agent understands and a name to show.",
+        providerSettingsForm: { placeholder: "~/.t3/acp-models.json", clearWhenEmpty: "omit" },
+      }),
+    ),
+    customModels: Schema.Array(Schema.String).pipe(
+      Schema.withDecodingDefault(Effect.succeed([])),
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
+  },
+  {
+    order: ["command", "args", "env", "authMethodId", "modelsPath"],
+  },
+);
+export type AcpSettings = typeof AcpSettings.Type;
+
 export const OpenCodeSettings = makeProviderSettingsSchema(
   {
     enabled: Schema.Boolean.pipe(
@@ -652,6 +758,7 @@ export const ServerSettings = Schema.Struct({
     cursor: CursorSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
     grok: GrokSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
     opencode: OpenCodeSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+    acp: AcpSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   }).pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   // New driver-agnostic instance map. Keyed by `ProviderInstanceId`; values
   // are `ProviderInstanceConfig` envelopes. The driver-specific config blob

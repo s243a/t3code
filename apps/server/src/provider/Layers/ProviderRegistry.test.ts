@@ -1568,7 +1568,10 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
             // executable. This verifies the public settings-to-probe behavior
             // without depending on timestamps assigned by TestClock.
             const refreshed = yield* Effect.gen(function* () {
-              for (let attempts = 0; attempts < 60; attempts += 1) {
+              // Bounded wait, not a fixed delay: each registered driver adds
+              // reconcile work, so this budget has to clear the whole set
+              // rather than the five drivers it was originally tuned to.
+              for (let attempts = 0; attempts < 400; attempts += 1) {
                 const providers = yield* registry.getProviders;
                 const codex = providers.find((provider) => provider.instanceId === "codex");
                 if (
@@ -1737,6 +1740,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
               );
 
               assert.deepStrictEqual(providers.map((provider) => provider.instanceId).toSorted(), [
+                "acp",
                 "claudeAgent",
                 "codex",
                 "cursor",
