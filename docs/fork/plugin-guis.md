@@ -399,6 +399,29 @@ And the rule the fabric already holds applies here too: this may inform a
 person's decision, never make it. A key agreed by every peer you have is still
 a key somebody chooses to pin.
 
+### Deferred: signing the plugin's code
+
+Worth having, not a priority, and it needs one change to become meaningful.
+
+A plugin here is a **URL**, and what a URL serves can differ on every load.
+There is no artifact to sign, so the nearest equivalents are poor: pinning a
+hash of the page fights every legitimate update, and signing a manifest —
+which the design already does — attests to what a plugin _claims_, not to the
+code it runs.
+
+Code signing becomes meaningful when a plugin is distributed as an **artifact**:
+a release someone downloads, verifies against a publisher key, and serves
+locally from the verified copy. That is a coherent model and a different one,
+with its own weight — versions, updates, a place to keep them — and it should be
+adopted because artifact distribution is wanted, not to make a signature
+possible.
+
+Until then the three checks that exist do most of the work: the publisher key
+says where the plugin came from, the service key says it is still the same
+thing, and the trust level bounds what a compromised one could do. Signing the
+code would narrow the remaining gap — a legitimate publisher serving altered
+code — which is real and is not the gap most likely to be exercised.
+
 ### Warning about elevation, without training people to click through
 
 `offer` and `invite` deserve a warning. Getting one to work is mostly about
