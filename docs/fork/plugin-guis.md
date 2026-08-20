@@ -96,6 +96,73 @@ never talks to the local service. Each is independently useful, and neither
 needs credentials for the other. The page is the only thing that knows both, and
 it is the most disposable part.
 
+## The better inversion: the plugin emits, T3 acts
+
+The design above puts a token in the page. There is a variant that does not, and
+it is stronger for exactly that reason.
+
+**The plugin publishes events; T3 consumes them and performs the action.** The
+page never holds a credential — nothing to leak, no scope to get wrong, no
+expiry to manage — because it never calls T3's API at all. It says _what
+happened_, and T3, which already has every privilege it needs, decides what to
+do about it.
+
+```
+  ┌──────────────┐   subscribes to events    ┌───────────────┐
+  │   T3 Code    │ ◀──────────────────────── │  plugin page  │
+  │              │                           │  or service   │
+  │  acts on its │                           │               │
+  │  own behalf  │  (no credential outbound) └───────────────┘
+  └──────────────┘
+```
+
+An event is a **request, not an instruction**. "This machine is at this address"
+is a fact T3 may record; "store this token" is a demand it should refuse on
+principle, since honouring it makes the page's compromise T3's. The useful
+events are the narrow ones — a peer was admitted, a peer moved, a peer was
+forgotten — and T3 mints its own credential when someone actually connects.
+
+### Polling is the obvious cost, and it is avoidable
+
+Polling is real overhead for something that is idle almost always: a request
+every few seconds, all day, to be told nothing happened.
+
+Server-Sent Events remove it without new machinery. T3 opens one long-lived
+`GET`, the plugin writes events as they occur, and an idle connection costs a
+socket and a periodic keep-alive. It is plain HTTP, it survives the webview
+sandbox, it reconnects by itself, and it needs no WebSocket upgrade path or
+second protocol. A plugin that would rather not hold a connection open can still
+be polled; the consumer does not care which.
+
+### What the inversion asks for instead
+
+Removing the credential moves the burden rather than deleting it, and the new
+obligations are worth stating.
+
+**T3 must authenticate the source.** If it subscribes to a loopback address,
+anything that can occupy that port can feed it events. The plugin should sign
+what it emits with a key T3 pins when the plugin is configured — which
+peerhailer already has, since identity there is a signing key. Pinning on
+configure is the same trust-on-first-use decision as admitting a peer, made once
+and deliberately.
+
+**Events need acknowledgement and identity.** A reconnecting consumer must not
+replay what it already acted on, so each event carries an id and T3 records how
+far it has read. Delivered-twice is the normal case for a stream that can drop;
+acted-on-twice must not be.
+
+**A stream is a queue somebody else fills.** A compromised or buggy plugin can
+emit as fast as it likes. Bounded buffers, a rate limit, and a plugin that can
+be muted without being removed.
+
+**Latency is now the plugin's problem, not the poller's.** Which is the right
+place for it: the side that knows something happened is the side that says so.
+
+Neither variant is strictly better. Token injection is fewer moving parts and
+suits a plugin that mostly _reads_ T3. Event subscription suits a plugin that
+mostly _tells_ T3 things, and is the one to prefer wherever the page would
+otherwise hold a credential — which is most of the time.
+
 ## Rules
 
 **Scope down, always.** A peer-directory plugin needs `access:read` at most; it
