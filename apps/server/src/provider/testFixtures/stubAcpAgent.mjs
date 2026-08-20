@@ -9,7 +9,7 @@
  * Exists so turn outcomes can be tested without a real agent, network, or
  * credentials.
  */
-const mode = process.argv[2] === "fail" ? "fail" : "ok";
+const mode = ["fail", "refuse"].includes(process.argv[2]) ? process.argv[2] : "ok";
 
 let buffer = "";
 process.stdin.setEncoding("utf8");
@@ -45,6 +45,15 @@ function handle(message) {
         },
       });
     case "session/prompt": {
+      if (mode === "refuse") {
+        // The polite failure: the agent stays alive and rejects the prompt.
+        // A client that only handles death leaves this turn running forever.
+        return send({
+          jsonrpc: "2.0",
+          id: message.id,
+          error: { code: -32000, message: "stub agent refuses this prompt" },
+        });
+      }
       if (mode === "fail") {
         // Die mid-turn. A JSON-RPC error reply is the politer failure, but this
         // is the one a client must survive: the agent goes away with the

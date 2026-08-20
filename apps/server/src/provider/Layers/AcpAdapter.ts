@@ -17,6 +17,7 @@
 import {
   type AcpSettings,
   EventId,
+  RuntimeRequestId,
   type ProviderApprovalDecision,
   ProviderDriverKind,
   type ProviderInstanceId,
@@ -30,8 +31,10 @@ import {
   type ThreadId,
   TurnId,
 } from "@t3tools/contracts";
+import * as Cause from "effect/Cause";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
@@ -46,8 +49,11 @@ import {
   makeAcpAssistantItemEvent,
   makeAcpContentDeltaEvent,
   makeAcpPlanUpdatedEvent,
+  makeAcpRequestOpenedEvent,
+  makeAcpRequestResolvedEvent,
   makeAcpToolCallEvent,
 } from "../acp/AcpCoreRuntimeEvents.ts";
+import { parsePermissionRequest, type AcpPermissionRequest } from "../acp/AcpRuntimeModel.ts";
 import * as AcpSessionRuntime from "../acp/AcpSessionRuntime.ts";
 import { ProviderAdapterRequestError, type ProviderAdapterError } from "../Errors.ts";
 import type { ProviderAdapterShape, ProviderThreadSnapshot } from "../Services/ProviderAdapter.ts";
@@ -64,6 +70,18 @@ interface AcpAdapterSessionState {
   readonly createdAt: string;
   updatedAt: string;
   activeTurnId: TurnId | undefined;
+  /**
+   * Approvals the agent is blocked on, keyed by the id the client answers with.
+   * The agent's `session/request_permission` is a JSON-RPC *request*: its reply
+   * is the outcome, so the handler parks here until a person decides.
+   */
+  readonly pendingApprovals: Map<
+    string,
+    {
+      readonly decision: Deferred.Deferred<ProviderApprovalDecision>;
+      readonly permissionRequest: AcpPermissionRequest;
+    }
+  >;
   model: string | undefined;
   readonly runtimeMode: RuntimeMode;
   status: ProviderSession["status"];
@@ -115,6 +133,8 @@ export const makeAcpAdapter = Effect.fn("makeAcpAdapter")(function* (
   const crypto = yield* Crypto.Crypto;
 
   const sessions = new Map<ThreadId, AcpAdapterSessionState>();
+  /** Starts in progress, so a second caller waits rather than spawning again. */
+  const starting = new Map<ThreadId, Deferred.Deferred<ProviderSession, ProviderAdapterError>>();
   const runtimeEvents = yield* PubSub.unbounded<ProviderRuntimeEvent>();
 
   const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
@@ -245,6 +265,22 @@ export const makeAcpAdapter = Effect.fn("makeAcpAdapter")(function* (
    * `activeTurnId` is still set, so it carries the turn it ends. Clearing first
    * would emit an orphaned event the client cannot attribute.
    */
+  /**
+   * A human-readable reason from a failure of any shape.
+   *
+   * Turn failures reach the client as text, and "[object Object]" tells nobody
+   * why their work stopped. Handles defects as well as errors, since a decode
+   * failure on an agent's reply arrives as the former.
+   */
+  function describeCause(cause: unknown): string {
+    const failure = Cause.findError(cause as Cause.Cause<unknown>);
+    const value = failure ?? Cause.findDefect(cause as Cause.Cause<unknown>) ?? cause;
+    if (value instanceof Error) return value.message;
+    if (typeof value === "string") return value;
+    const described = (value as { message?: unknown })?.message;
+    return typeof described === "string" && described.length > 0 ? described : "ACP prompt failed.";
+  }
+
   const endTurn = Effect.fn("AcpAdapter.endTurn")(function* (
     threadId: ThreadId,
     turnId: TurnId,
@@ -257,20 +293,20 @@ export const makeAcpAdapter = Effect.fn("makeAcpAdapter")(function* (
     yield* publishTurnEvent(threadId, turnId, { type: "turn.completed", payload });
     const session = sessions.get(threadId);
     if (session) {
-      session.activeTurnId = undefined;
-      session.status = payload.state === "failed" ? "error" : "ready";
+      // Only the turn holding the slot may release it. A turn cancelled while
+      // its successor is already running would otherwise clear the newer id,
+      // and every later event would publish with no turn to attribute it to.
+      if (session.activeTurnId === turnId) {
+        session.activeTurnId = undefined;
+        session.status = payload.state === "failed" ? "error" : "ready";
+      }
       session.updatedAt = yield* nowIso;
     }
   });
 
-  const startSession = Effect.fn("AcpAdapter.startSession")(function* (
+  const openSession = Effect.fn("AcpAdapter.openSession")(function* (
     input: ProviderSessionStartInput,
   ) {
-    const existing = sessions.get(input.threadId);
-    if (existing) {
-      return buildSession(input.threadId, existing);
-    }
-
     const cwd = input.cwd ?? process.cwd();
     const scope = yield* Scope.make();
 
@@ -297,13 +333,69 @@ export const makeAcpAdapter = Effect.fn("makeAcpAdapter")(function* (
       Effect.provide(context),
     );
 
-    yield* runtime
-      .start()
-      .pipe(
-        Effect.mapError((cause) =>
-          mapAcpToAdapterError(ACP_DRIVER_KIND, input.threadId, "session/new", cause),
-        ),
-      );
+    yield* runtime.start().pipe(
+      Effect.mapError((cause) =>
+        mapAcpToAdapterError(ACP_DRIVER_KIND, input.threadId, "session/new", cause),
+      ),
+      // The agent process is already running by now — it spawns during
+      // Layer.build, with its kill finalizer in this scope. Failing without
+      // closing the scope orphans it, and the retry spawns another.
+      Effect.onError(() => Scope.close(scope, Exit.void)),
+    );
+
+    // An agent's permission request is a JSON-RPC request whose *reply* is the
+    // answer, so the handler blocks until a person decides. Registered before
+    // the first turn can run: an unregistered handler answers methodNotFound,
+    // which reads to the agent as a client that cannot approve anything.
+    yield* runtime.handleRequestPermission((params) =>
+      Effect.gen(function* () {
+        const state = sessions.get(input.threadId);
+        const permissionRequest = parsePermissionRequest(params);
+        const requestId = yield* crypto.randomUUIDv4.pipe(Effect.orDie);
+        const decision = yield* Deferred.make<ProviderApprovalDecision>();
+        state?.pendingApprovals.set(requestId, { decision, permissionRequest });
+
+        yield* PubSub.publish(
+          runtimeEvents,
+          makeAcpRequestOpenedEvent({
+            stamp: yield* nextStamp,
+            provider: ACP_DRIVER_KIND,
+            threadId: input.threadId,
+            turnId: state?.activeTurnId,
+            requestId: RuntimeRequestId.make(requestId),
+            permissionRequest,
+            detail: permissionRequest.detail ?? "[no detail]",
+            args: params,
+            source: "acp.jsonrpc",
+            method: "session/request_permission",
+            rawPayload: params,
+          }),
+        );
+
+        const resolved = yield* Deferred.await(decision);
+        state?.pendingApprovals.delete(requestId);
+
+        yield* PubSub.publish(
+          runtimeEvents,
+          makeAcpRequestResolvedEvent({
+            stamp: yield* nextStamp,
+            provider: ACP_DRIVER_KIND,
+            threadId: input.threadId,
+            turnId: state?.activeTurnId,
+            requestId: RuntimeRequestId.make(requestId),
+            permissionRequest,
+            decision: resolved,
+          }),
+        );
+
+        return {
+          outcome:
+            resolved === "cancel"
+              ? ({ outcome: "cancelled" } as const)
+              : { outcome: "selected" as const, optionId: acpPermissionOutcome(resolved) },
+        };
+      }),
+    );
 
     const pumpFiber = yield* runtime.getEvents().pipe(
       Stream.runForEach((event) => publishParsedEvent(input.threadId, event)),
@@ -319,12 +411,44 @@ export const makeAcpAdapter = Effect.fn("makeAcpAdapter")(function* (
       createdAt,
       updatedAt: createdAt,
       activeTurnId: undefined,
+      pendingApprovals: new Map(),
       model: input.modelSelection?.model,
       runtimeMode: input.runtimeMode,
       status: "ready",
     };
     sessions.set(input.threadId, state);
     return buildSession(input.threadId, state);
+  });
+
+  /**
+   * Start a session, or join one already starting for this thread.
+   *
+   * Two concurrent starts would each spawn an agent, and the loser's process
+   * and scope would leak with nothing left holding a reference. The claim is
+   * settled on every exit — a failed start that left one outstanding would
+   * park every later caller on a promise nobody completes.
+   */
+  const startSession = Effect.fn("AcpAdapter.startSession")(function* (
+    input: ProviderSessionStartInput,
+  ) {
+    const existing = sessions.get(input.threadId);
+    if (existing) {
+      return buildSession(input.threadId, existing);
+    }
+    const inFlight = starting.get(input.threadId);
+    if (inFlight) {
+      return yield* Deferred.await(inFlight);
+    }
+
+    const claim = yield* Deferred.make<ProviderSession, ProviderAdapterError>();
+    starting.set(input.threadId, claim);
+    return yield* openSession(input).pipe(
+      Effect.onExit((exit) =>
+        Effect.sync(() => starting.delete(input.threadId)).pipe(
+          Effect.andThen(Deferred.done(claim, exit)),
+        ),
+      ),
+    );
   });
 
   /**
@@ -377,11 +501,14 @@ export const makeAcpAdapter = Effect.fn("makeAcpAdapter")(function* (
     // is worse than showing the error.
     yield* Effect.forkDetach(
       session.runtime.prompt({ prompt }).pipe(
-        Effect.matchEffect({
+        // matchCause, not match: a decode failure on the agent's reply arrives
+        // as a defect, and a defect would kill this fiber with the turn still
+        // marked running — the spinner-forever case.
+        Effect.matchCauseEffect({
           onFailure: (cause) =>
             endTurn(input.threadId, turnId, {
               state: "failed",
-              errorMessage: String(cause?.message ?? cause) || "ACP prompt failed.",
+              errorMessage: describeCause(cause),
             }),
           onSuccess: (response) =>
             endTurn(input.threadId, turnId, {
@@ -414,17 +541,18 @@ export const makeAcpAdapter = Effect.fn("makeAcpAdapter")(function* (
     decision: ProviderApprovalDecision,
   ) {
     const session = yield* requireSession(threadId);
-    yield* session.runtime
-      .request("session/request_permission/response", {
-        requestId,
-        outcome: { outcome: "selected", optionId: acpPermissionOutcome(decision) },
-      })
-      .pipe(
-        Effect.mapError((cause) =>
-          mapAcpToAdapterError(ACP_DRIVER_KIND, threadId, "session/request_permission", cause),
-        ),
-        Effect.asVoid,
-      );
+    // The answer travels back as the reply to the agent's own request, so this
+    // resolves what the handler is parked on. There is no such thing as a
+    // client-initiated permission response in ACP.
+    const pending = session.pendingApprovals.get(requestId);
+    if (!pending) {
+      return yield* new ProviderAdapterRequestError({
+        provider: ACP_DRIVER_KIND,
+        method: "session/request_permission",
+        detail: `Unknown pending approval request: ${requestId}`,
+      });
+    }
+    yield* Deferred.succeed(pending.decision, decision);
   });
 
   const stopSession = Effect.fn("AcpAdapter.stopSession")(function* (threadId: ThreadId) {

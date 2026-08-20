@@ -5,6 +5,8 @@
  * its own turn id. A turn that ends without one leaves the client showing
  * progress for work that already stopped.
  */
+import { fileURLToPath } from "node:url";
+
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import { AcpSettings, ThreadId } from "@t3tools/contracts";
@@ -17,9 +19,10 @@ import * as TestClock from "effect/testing/TestClock";
 import { makeAcpAdapter } from "./AcpAdapter.ts";
 
 const decodeAcpSettings = Schema.decodeSync(AcpSettings);
-const STUB = new URL("../testFixtures/stubAcpAgent.mjs", import.meta.url).pathname;
+// `new URL(...).pathname` yields "/C:/..." on Windows, which cannot be spawned.
+const STUB = fileURLToPath(new URL("../testFixtures/stubAcpAgent.mjs", import.meta.url));
 
-const settingsFor = (mode: "ok" | "fail") =>
+const settingsFor = (mode: "ok" | "fail" | "refuse") =>
   decodeAcpSettings({
     enabled: true,
     command: process.execPath,
@@ -27,7 +30,7 @@ const settingsFor = (mode: "ok" | "fail") =>
   });
 
 /** Run a turn and collect the runtime events it produces. */
-const runTurn = Effect.fn("runTurn")(function* (mode: "ok" | "fail") {
+const runTurn = Effect.fn("runTurn")(function* (mode: "ok" | "fail" | "refuse") {
   const adapter = yield* makeAcpAdapter(settingsFor(mode));
   const threadId = ThreadId.make("acp-adapter-turn-test");
 
@@ -122,6 +125,25 @@ describe("AcpAdapter", () => {
             | undefined;
           assert.strictEqual(payload?.state, "failed");
           assert.isTrue((payload?.errorMessage ?? "").length > 0, "a failure must explain itself");
+        }),
+      { timeout: 60_000 },
+    );
+  });
+});
+
+it.layer(NodeServices.layer)("AcpAdapter refusal", (it) => {
+  describe("turn lifecycle", () => {
+    it.effect(
+      "an agent that refuses the prompt still ends the turn",
+      () =>
+        Effect.gen(function* () {
+          // The polite failure. Death is covered above; this is the agent
+          // staying alive and replying with a JSON-RPC error, which must not
+          // leave the client waiting on a turn that will never end.
+          const { collected, turnId } = yield* runTurn("refuse");
+          const completed = collected.find((event) => event.type === "turn.completed");
+          assert.isDefined(completed, "a refused turn must still terminate");
+          assert.strictEqual(completed?.turnId, turnId);
         }),
       { timeout: 60_000 },
     );
