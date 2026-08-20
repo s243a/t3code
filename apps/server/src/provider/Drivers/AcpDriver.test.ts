@@ -1,27 +1,29 @@
-import * as NodeFSP from "node:fs/promises";
-import * as NodeOS from "node:os";
-import * as NodePath from "node:path";
-
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
 import { createModelCapabilities } from "@t3tools/shared/model";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
+import * as Path from "effect/Path";
 
 import { readModelsFile } from "./AcpDriver.ts";
 
 const CAPABILITIES = createModelCapabilities({ optionDescriptors: [] });
 
-const withModelsFile = <A>(contents: string, use: (path: string) => Effect.Effect<A>) =>
-  Effect.acquireUseRelease(
-    Effect.promise(async () => {
-      const dir = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "acp-models-"));
-      const file = NodePath.join(dir, "models.json");
-      await NodeFSP.writeFile(file, contents, "utf8");
-      return { dir, file };
-    }),
-    ({ file }) => use(file),
-    ({ dir }) => Effect.promise(() => NodeFSP.rm(dir, { recursive: true, force: true })),
-  );
+/** Write a models file, hand its path to the test, and clean up after. */
+const withModelsFile = (
+  contents: string,
+  use: (path: string) => Effect.Effect<void, never, FileSystem.FileSystem | Path.Path>,
+) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const dir = yield* fs.makeTempDirectory().pipe(Effect.orDie);
+    const file = path.join(dir, "models.json");
+    yield* fs.writeFileString(file, contents).pipe(Effect.orDie);
+    return yield* use(file).pipe(
+      Effect.ensuring(fs.remove(dir, { recursive: true }).pipe(Effect.orDie)),
+    );
+  });
 
 it.layer(NodeServices.layer)("AcpDriver", (it) => {
   describe("models file", () => {
@@ -62,6 +64,53 @@ it.layer(NodeServices.layer)("AcpDriver", (it) => {
           Effect.gen(function* () {
             const models = yield* readModelsFile(file, CAPABILITIES);
             expect(models.map((model) => model.slug)).toEqual(["a", "b"]);
+          }),
+      ),
+    );
+
+    it.effect("a profile gets its own list", () =>
+      withModelsFile(
+        JSON.stringify({
+          profiles: { "agy-dual": ["Gemini 3.1 Pro"], claude: ["claude-sonnet-5"] },
+          models: ["fallback"],
+        }),
+        (file) =>
+          Effect.gen(function* () {
+            const dual = yield* readModelsFile(file, CAPABILITIES, "agy-dual");
+            expect(dual.map((model) => model.slug)).toEqual(["Gemini 3.1 Pro"]);
+
+            const claude = yield* readModelsFile(file, CAPABILITIES, "claude");
+            expect(claude.map((model) => model.slug)).toEqual(["claude-sonnet-5"]);
+          }),
+      ),
+    );
+
+    it.effect("an unprofiled or unlisted agent falls back to the shared list", () =>
+      withModelsFile(
+        JSON.stringify({ profiles: { "agy-dual": ["Gemini 3.1 Pro"] }, models: ["fallback"] }),
+        (file) =>
+          Effect.gen(function* () {
+            expect((yield* readModelsFile(file, CAPABILITIES)).map((m) => m.slug)).toEqual([
+              "fallback",
+            ]);
+            expect(
+              (yield* readModelsFile(file, CAPABILITIES, "not-in-the-file")).map((m) => m.slug),
+            ).toEqual(["fallback"]);
+          }),
+      ),
+    );
+
+    it.effect("a profile may spell its list the long way", () =>
+      withModelsFile(
+        JSON.stringify({
+          profiles: { "agy-dual": { models: [{ id: "pro", name: "Gemini 3.1 Pro" }] } },
+        }),
+        (file) =>
+          Effect.gen(function* () {
+            const models = yield* readModelsFile(file, CAPABILITIES, "agy-dual");
+            expect(models.map((model) => [model.slug, model.name])).toEqual([
+              ["pro", "Gemini 3.1 Pro"],
+            ]);
           }),
       ),
     );

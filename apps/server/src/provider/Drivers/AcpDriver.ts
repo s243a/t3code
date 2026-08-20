@@ -52,6 +52,17 @@ const decodeJson = Schema.decodeEffect(Schema.fromJsonString(Schema.Unknown));
 /**
  * Models an ACP agent offers, read from a file the user maintains.
  *
+ * One file can describe several agents, keyed by profile:
+ *
+ * ```json
+ * { "profiles": { "agy-dual": ["Gemini 3.1 Pro"] }, "models": ["fallback"] }
+ * ```
+ *
+ * A profile's list wins where it exists, and the top-level `models` covers the
+ * rest. Models hang off the profile rather than the other way around because
+ * choosing a different agent means launching a different process, which a
+ * running session cannot do — the model is a per-turn choice, the agent is not.
+ *
  * Entries may be `"id"` or `{ id, name }`. They are returned as built-in rather
  * than custom models because custom ones are stored under a normalized slug
  * that also becomes their label, which loses names like "Gemini 3.7 Flash".
@@ -63,6 +74,7 @@ const decodeJson = Schema.decodeEffect(Schema.fromJsonString(Schema.Unknown));
 export const readModelsFile = Effect.fn("AcpDriver.readModelsFile")(function* (
   modelsPath: string,
   capabilities: ModelCapabilities,
+  profile = "",
 ) {
   if (modelsPath.trim().length === 0) return [];
   const fs = yield* FileSystem.FileSystem;
@@ -81,11 +93,17 @@ export const readModelsFile = Effect.fn("AcpDriver.readModelsFile")(function* (
   );
   if (parsed === null) return [];
 
-  const entries = Array.isArray(parsed)
-    ? parsed
-    : Array.isArray((parsed as { models?: unknown }).models)
-      ? (parsed as { models: ReadonlyArray<unknown> }).models
-      : [];
+  const listOf = (value: unknown): ReadonlyArray<unknown> =>
+    Array.isArray(value)
+      ? value
+      : Array.isArray((value as { models?: unknown } | null)?.models)
+        ? (value as { models: ReadonlyArray<unknown> }).models
+        : [];
+
+  const profiles = (parsed as { profiles?: Record<string, unknown> } | null)?.profiles;
+  const named = profile.trim();
+  const forProfile = named.length > 0 && profiles ? listOf(profiles[named]) : [];
+  const entries = forProfile.length > 0 ? forProfile : listOf(parsed);
 
   const models: Array<ServerProviderModel> = [];
   const seen = new Set<string>();
@@ -189,7 +207,11 @@ export const AcpDriver: ProviderDriver<AcpSettings, AcpDriverEnv> = {
       });
 
       const adapter = yield* makeAcpAdapter(effectiveConfig, { instanceId });
-      const fileModels = yield* readModelsFile(effectiveConfig.modelsPath, ACP_CAPABILITIES);
+      const fileModels = yield* readModelsFile(
+        effectiveConfig.modelsPath,
+        ACP_CAPABILITIES,
+        effectiveConfig.profile,
+      );
 
       const checkedAt = DateTime.formatIso(yield* DateTime.now);
       const configured = effectiveConfig.command.trim().length > 0;
