@@ -44,6 +44,7 @@ import {
   makeStaticProviderMaintenanceResolver,
   resolveProviderMaintenanceCapabilitiesEffect,
 } from "../providerMaintenance.ts";
+import { expandHomePath } from "../../os-jank.ts";
 import { buildServerProvider, providerModelsFromSettings } from "../providerSnapshot.ts";
 
 const decodeAcpSettings = Schema.decodeSync(AcpSettings);
@@ -78,10 +79,7 @@ export const readModelsFile = Effect.fn("AcpDriver.readModelsFile")(function* (
 ) {
   if (modelsPath.trim().length === 0) return [];
   const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const resolved = modelsPath.startsWith("~/")
-    ? path.join(process.env.HOME ?? "", modelsPath.slice(2))
-    : modelsPath;
+  const resolved = yield* expandHomePath(modelsPath);
 
   const parsed = yield* fs.readFileString(resolved).pipe(
     Effect.flatMap((raw) => decodeJson(raw)),
