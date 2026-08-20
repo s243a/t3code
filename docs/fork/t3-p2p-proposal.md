@@ -166,8 +166,20 @@ answered. Saying nothing therefore has to happen *before* accept, which means
 one of
 
 - a transport where the first packet carries authentication and unauthenticated
-  packets are dropped without reply — the WireGuard approach, and why it does
-  not appear in a port scan,
+  packets are dropped without reply. In practice that means **UDP**: TCP cannot
+  do it, because the kernel completes the handshake at `listen()` and the
+  scanner has its SYN-ACK before the application is consulted. A datagram can
+  simply go unanswered, which is why WireGuard does not appear in a port scan.
+  UDP suits the rest of this too — NAT traversal is UDP-shaped — and a service
+  that never replies before authenticating cannot be turned into a DDoS
+  amplifier, which an unauthenticated one can.
+
+  The catch is what silence costs above it: no ordering, no reliability, no
+  congestion control, and a handshake to design that resists both forgery and
+  CPU exhaustion. Reaching that conclusion is mostly a description of WireGuard,
+  so the sane reading is to *run over* an authenticated UDP transport rather
+  than write one — which is the same "meshes are interchangeable backends"
+  argument arriving again, now for a security property rather than reachability.
 - a packet filter in front of the process, opened by prior authorization, or
 - not listening at all, which relaying makes possible and which is the only
   option that costs nothing to run.
