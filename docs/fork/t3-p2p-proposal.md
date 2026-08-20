@@ -145,6 +145,31 @@ construction — a peer's view of a third machine is as old as its last exchange
 Show them as hints, verify on connect, and let the connection be the source of
 truth rather than the record.
 
+**An unauthorized caller learns nothing, by default.** Answering "invalid token"
+confirms a peer is there and that tokens are the way in; a scanner has found
+something worth returning to. The default is that a caller who cannot
+authenticate gets a response indistinguishable from nothing being there, and
+nothing else — no version, no name, no hint that it guessed the protocol.
+
+Two details decide whether that holds:
+
+- **Refused and dropped leak differently.** A refusal is a TCP RST, which is
+  what a closed port does: it hides the service but confirms the host is up.
+  Dropping silently is indistinguishable from a filtered port or a dead host.
+  Neither fully hides a process that has already accepted a connection, which
+  is the argument for not listening at all where relaying allows it — be
+  invisible where possible, indistinguishable where not.
+- **Sameness has to include timing.** A rejection that is quick for a malformed
+  token and slow for a well-formed one is an oracle with extra steps. Compare in
+  constant time and let every failure take the same shape.
+
+Verbose errors are for troubleshooting and troubleshooting is real — silent
+failure is miserable to debug, and a mode nobody can debug gets turned off. But
+that should not become a switch that trades the property away for everyone.
+Diagnostics belong where the caller has already proved something: to
+authenticated peers, on a loopback-only endpoint, or in a time-boxed diagnostic
+window an operator opens deliberately and which closes itself.
+
 **Records carry no tokens.** A record saying "machine `sol` exists, reachable
 here, you hold a grant there" is safe to replicate to every peer. A record
 carrying a bearer credential with `terminal:operate` is a shell key on a
