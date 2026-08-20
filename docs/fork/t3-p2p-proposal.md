@@ -204,11 +204,19 @@ band.
 
 Two rules keep a mode change from being a disconnection:
 
-- **Verify, then drop.** Establish the covert channel, confirm it carries
-  traffic to each trusted peer, and only then stop listening. A switch that
-  cannot be confirmed rolls back to TCP rather than completing. Done in the
-  other order, "going covert" and "silently disconnecting everyone" look
-  identical from the inside.
+- **Show the reckoning, then ask.** Before a peer stops listening, the user sees
+  which peers the covert channel already reaches and which it does not, and
+  decides whether to drop the noisy channel. Verification is the point, but a
+  person reading a list is better than a check the software grades itself on —
+  and it matches how trust is changed elsewhere here, deliberately and visibly.
+
+  The prompt has to be honest about scope. Dropping the listener is not
+  selective: it is not "disconnect these peers" but "stop answering", which
+  lands on everyone the covert channel cannot reach. So the useful list is three
+  columns, not two — reachable covertly, reachable only by relay through some
+  peer that holds both channels, and lost until enrolled. A switch that cannot
+  be confirmed rolls back rather than completing, because from the inside,
+  "going covert" and "silently disconnecting everyone" look identical.
 - **Keep a way back in.** A peer that goes covert and then loses its
   configuration is unreachable by design, and the failure is invisible — no
   port answers, which is exactly what success looks like. It needs a local
@@ -220,6 +228,16 @@ Enrolment before concealment also decides who can ever reach a covert peer: a
 peer that is not already enrolled cannot find it, so new peers arrive by
 introduction through one that is. That is the relay case again, and it is why
 these two features want designing together rather than in sequence.
+
+**Channels are per pair, not per fabric.** Peers need not all share one. Some
+reach each other over the noisy channel, some over a covert one, and a peer
+holding both is how a message crosses between them. This is the same shape as
+the two-plane split: a channel is a route between two peers, and the fabric's
+job is to know which routes exist rather than to insist everyone use the same
+one. It also means going covert costs less than it first appears — a peer that
+loses its direct route may still be reached through one that bridges — and that
+the interesting question about any peer is not which mode it is in but which of
+its neighbours can still hear it.
 
 Whatever the posture, **sameness has to include timing.** A rejection that is
 quick for a malformed token and slow for a well-formed one is an oracle with
