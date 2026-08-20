@@ -116,11 +116,47 @@ do about it.
   └──────────────┘
 ```
 
-An event is a **request, not an instruction**. "This machine is at this address"
-is a fact T3 may record; "store this token" is a demand it should refuse on
-principle, since honouring it makes the page's compromise T3's. The useful
-events are the narrow ones — a peer was admitted, a peer moved, a peer was
-forgotten — and T3 mints its own credential when someone actually connects.
+An event is a **request, not an instruction**: T3 decides what to do about it,
+and may decline.
+
+### Which credentials T3 may accept, and why "never" was wrong
+
+An earlier draft said T3 should refuse "store this token" on principle. That is
+too strong, and it breaks the feature: **discovering another T3 instance is
+useless if T3 cannot then connect to it**, and connecting needs a credential
+that has to arrive somehow. Refusing all of them leaves the user copying pairing
+URLs by hand, which is the friction this was meant to remove.
+
+The distinction that actually matters is **which way the authority points**.
+
+**A credential over _this_ machine must never be accepted from a plugin.** A
+session for this environment, an entry in its authorised clients, anything that
+lets somebody _in_ here. Accepting one makes the page's compromise this
+machine's compromise, and there is no version of that trade worth making.
+
+**A credential over _another_ machine is a different object.** A saved remote
+environment is outbound authority: it lets this T3 act _there_. It grants
+nobody access _here_. Storing one is closer to storing a bookmark that happens
+to have a key attached, and the honest risk is not escalation but **being lured
+somewhere hostile** — a compromised plugin could offer an environment belonging
+to an attacker, and a user who opens it sends their prompts and code into it.
+
+That is a real risk and a different one, and it is answered differently:
+
+- **Provenance travels with the environment.** It arrives named as the peer it
+  came from, with that peer's key fingerprint, because "sol offered this" is
+  what a person can actually judge.
+- **Connecting stays deliberate.** An environment may appear in the list without
+  anything connecting to it. The lure only works if opening is automatic.
+- **The credential is minted at the far end, on demand, and briefly.** The
+  remote T3 issues it when asked, scoped and short-lived; the peer fabric
+  carries it over an authenticated channel and stores it nowhere. That is the
+  same rule the directory already follows — hold the grant, make the credential
+  when it is needed.
+
+So the shape is: a plugin may tell T3 _where a machine is and who vouched for
+it_, and may carry a credential **for that machine** minted by that machine. It
+may never hand T3 authority over T3.
 
 ### Polling is the obvious cost, and it is avoidable
 
@@ -178,11 +214,12 @@ is the thing this design is avoiding.
 stay separate, so one plugin page cannot read another's state — and a
 compromised plugin cannot reach the browser state of the rest.
 
-**Watch the direction of "store".** A plugin _reading_ T3 is the easy half. A
-plugin _writing_ into T3 — adding a machine T3 will later trust — is where care
-belongs. The narrow version records **where a machine is**, and lets T3 mint its
-own credential when someone connects. T3 accepting a credential _from_ a page is
-the shape to refuse: it makes the page's compromise T3's compromise.
+**Watch which way authority points, not whether a credential is involved.** A
+plugin may carry a credential for _another_ machine, minted by that machine —
+that is outbound authority and the reason the integration is worth having. It
+may never supply one that grants access to _this_ machine. See the discussion
+above; the first version of this rule refused both and quietly made the feature
+pointless.
 
 **The plugin list is configuration, not discovery.** A name, a URL, an icon,
 entered deliberately. Nothing scanned, nothing auto-registered. A tool that
