@@ -101,13 +101,24 @@ export interface AcpAdapterOptions {
  * no means the agent acts directly and the client never sees it. Both default
  * off in settings, so silence here is a refusal rather than a grant.
  */
-export function buildAcpClientCapabilities(settings: AcpSettings) {
+/**
+ * What this client will actually do for an agent.
+ *
+ * Deliberately always false, whatever the settings say. Advertising a
+ * capability the adapter does not serve is worse than declining it: the agent
+ * believes it can ask, and its first `fs/read_text_file` or `terminal/create`
+ * comes back as methodNotFound — a failure it cannot plan around, in the middle
+ * of work it already started.
+ *
+ * The equivalent capability is available where it can be reviewed. The bridge
+ * offers file and command tools over MCP, so each call is held, shown with its
+ * arguments, and approved or refused before it runs — the same treatment as any
+ * other tool, rather than the client quietly acting on the agent's say-so.
+ */
+export function buildAcpClientCapabilities(_settings: AcpSettings) {
   return {
-    fs: {
-      readTextFile: settings.filesystemAccess,
-      writeTextFile: settings.filesystemAccess,
-    },
-    terminal: settings.terminalAccess,
+    fs: { readTextFile: false, writeTextFile: false },
+    terminal: false,
   };
 }
 

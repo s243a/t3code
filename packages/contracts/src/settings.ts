@@ -507,21 +507,31 @@ export const AcpSettings = makeProviderSettingsSchema(
         providerSettingsForm: { placeholder: "", clearWhenEmpty: "omit" },
       }),
     ),
-    // Off by default on purpose. These decide whether the client merely watches
-    // the agent work or performs privileged actions for it, which is the user's
-    // call to make rather than a default to inherit.
+    // Hidden, and false, until the adapter serves them. A visible toggle that
+    // only changes what the agent believes is worse than no toggle: the agent
+    // is told it may ask, and its first request fails as methodNotFound partway
+    // through work it has already begun.
+    //
+    // The capability itself is not missing — it is somewhere better. The bridge
+    // offers file and command tools over MCP, where every call is held, shown
+    // with its arguments and approved before it runs. The fields stay so that
+    // an adapter which does serve these can turn them back on.
     filesystemAccess: Schema.Boolean.pipe(
       Schema.withDecodingDefault(Effect.succeed(false)),
       Schema.annotateKey({
         title: "Serve filesystem requests",
-        description: "Let the agent ask this client to read and write files on its behalf.",
+        description:
+          "Let the agent ask this client to read and write files on its behalf. Not yet served; use an agent that exposes file tools over MCP, where each call is reviewed.",
+        providerSettingsForm: { hidden: true },
       }),
     ),
     terminalAccess: Schema.Boolean.pipe(
       Schema.withDecodingDefault(Effect.succeed(false)),
       Schema.annotateKey({
         title: "Serve terminal requests",
-        description: "Let the agent ask this client to run commands on its behalf.",
+        description:
+          "Let the agent ask this client to run commands on its behalf. Not yet served; T3 has no surface for an agent-owned terminal.",
+        providerSettingsForm: { hidden: true },
       }),
     ),
     profile: TrimmedString.pipe(
@@ -551,15 +561,7 @@ export const AcpSettings = makeProviderSettingsSchema(
     ),
   },
   {
-    order: [
-      "command",
-      "args",
-      "env",
-      "authMethodId",
-      "modelsPath",
-      "filesystemAccess",
-      "terminalAccess",
-    ],
+    order: ["command", "args", "env", "authMethodId", "modelsPath"],
   },
 );
 export type AcpSettings = typeof AcpSettings.Type;
