@@ -151,17 +151,34 @@ something worth returning to. The default is that a caller who cannot
 authenticate gets a response indistinguishable from nothing being there, and
 nothing else — no version, no name, no hint that it guessed the protocol.
 
-Two details decide whether that holds:
+How much nothing is a setting, because the postures have different costs:
 
-- **Refused and dropped leak differently.** A refusal is a TCP RST, which is
-  what a closed port does: it hides the service but confirms the host is up.
-  Dropping silently is indistinguishable from a filtered port or a dead host.
-  Neither fully hides a process that has already accepted a connection, which
-  is the argument for not listening at all where relaying allows it — be
-  invisible where possible, indistinguishable where not.
-- **Sameness has to include timing.** A rejection that is quick for a malformed
-  token and slow for a well-formed one is an oracle with extra steps. Compare in
-  constant time and let every failure take the same shape.
+| Posture | An unauthorized caller sees | Cost |
+| --- | --- | --- |
+| `diagnostic` | why it was rejected | confirms the peer, names the mechanism |
+| `anonymous` *(default)* | a connection that opens and closes | confirms something listens |
+| `covert` | nothing; the packet is not answered | needs a transport that allows it |
+
+`anonymous` is the default because it is honest about what a normal TCP service
+can achieve. `covert` is the stronger posture and the one with a prerequisite:
+by the time a listener has accepted a connection, the handshake has already
+answered. Saying nothing therefore has to happen *before* accept, which means
+one of
+
+- a transport where the first packet carries authentication and unauthenticated
+  packets are dropped without reply — the WireGuard approach, and why it does
+  not appear in a port scan,
+- a packet filter in front of the process, opened by prior authorization, or
+- not listening at all, which relaying makes possible and which is the only
+  option that costs nothing to run.
+
+That last one is worth noticing: `covert` and the no-listener posture are the
+same idea reached from two directions, and a peer that only dials out is
+already covert without a mode for it.
+
+Whatever the posture, **sameness has to include timing.** A rejection that is
+quick for a malformed token and slow for a well-formed one is an oracle with
+extra steps. Compare in constant time and let every failure take the same shape.
 
 Verbose errors are for troubleshooting and troubleshooting is real — silent
 failure is miserable to debug, and a mode nobody can debug gets turned off. But
