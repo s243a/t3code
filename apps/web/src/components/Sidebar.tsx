@@ -121,6 +121,7 @@ import type { SidebarThreadSummary } from "../types";
 import { cn } from "~/lib/utils";
 import { buildThreadActionMenuItems } from "./threadActionMenu.logic";
 import {
+  animatePinnedLayoutChanges,
   buildBulkTitleRegenerationContextMenuItem,
   formatWorkingDurationLabel,
   firstValidTimestampMs,
@@ -448,6 +449,7 @@ function SortablePinnedThreadRow(props: {
 }) {
   const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: props.id,
+    animateLayoutChanges: animatePinnedLayoutChanges,
   });
   return props.children({ listeners, setNodeRef, transform, transition, isDragging });
 }
@@ -801,7 +803,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     snapshot: changeRequestSnapshot,
     retainTerminalOnBranchMismatch,
   });
-  const prState = pr?.state ?? null;
 
   // Same semantics as the legacy sidebar (never-visited counts as read):
   // switching sidebars must not light up every historical thread as unread.
@@ -819,7 +820,10 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   const isWoke =
     wokeAtDate !== null &&
     (lastVisitedDate === null || lastVisitedDate < wokeAtDate) &&
-    !changeRequestAutoSettles(prState, props.autoSettleOnMerge);
+    !changeRequestAutoSettles(pr, {
+      autoSettleOnMerge: props.autoSettleOnMerge,
+      thread,
+    });
   // In-flight rows (working, or waiting on approval/input) fade as a whole:
   // there is nothing for the user to do yet, so prominence is reserved for
   // rows that need a human — done (unread), read-but-unsettled, failed, and
@@ -1420,7 +1424,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                     isWokeStatus
                       ? "pointer-events-auto"
                       : "pointer-events-none group-has-[:focus-visible]/sidebar-status-slot:absolute group-has-[:focus-visible]/sidebar-status-slot:right-0 group-has-[:focus-visible]/sidebar-status-slot:opacity-0 group-hover/sidebar-row:absolute group-hover/sidebar-row:right-0 group-hover/sidebar-row:opacity-0",
-                    "self-center justify-self-end tabular-nums text-secondary-label transition-opacity",
+                    "flex items-center self-center justify-self-end tabular-nums text-secondary-label transition-opacity",
                     snoozeMenuOpen && "pointer-events-none absolute right-0 opacity-0",
                   )}
                 >
@@ -2024,9 +2028,9 @@ export default function Sidebar() {
         serverConfigs.get(thread.environmentId)?.environment.capabilities.threadSnooze === true;
       const threadKey = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
       const snapshot = changeRequestSnapshotByKey.get(threadKey);
-      const changeRequestState =
+      const changeRequest =
         snapshot != null && (thread.worktreePath === null || snapshot.branch === thread.branch)
-          ? snapshot.pr.state
+          ? snapshot.pr
           : null;
       // Snooze outranks everything, including a pin: "hide until Tuesday"
       // temporarily suspends "keep on top". The pin survives underneath —
@@ -2048,7 +2052,7 @@ export default function Sidebar() {
           now,
           autoSettleAfterDays,
           autoSettleOnMerge,
-          changeRequestState,
+          changeRequest,
         })
       ) {
         settled.push(thread);
@@ -3890,7 +3894,7 @@ export default function Sidebar() {
                   <button
                     type="button"
                     onClick={openAddProjectCommandPalette}
-                    className="inline-flex items-center gap-1.5 rounded-md border border-sidebar-border px-2.5 py-1 text-[11px] font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-sidebar-border px-2.5 py-1 text-[11px] font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
                   >
                     <PlusIcon className="-mx-0.5 size-3" />
                     Add project
