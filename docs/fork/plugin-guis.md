@@ -1,5 +1,10 @@
 # Plugin GUIs in T3 Code
 
+> **Superseded in part.** Upstream is building a plugin runtime — six open PRs,
+> two of them spikes comparing models — and its design predates this document.
+> See [plugin-guis-vs-upstream.md](plugin-guis-vs-upstream.md) for what survives:
+> the trust-level argument does, the reverse-proxy inversion does not.
+>
 > **Fork-local design.** Specific to the `s243a/t3code` fork, not proposed for
 > upstream. Written at the level of _what it should do and why_; the
 > implementation section names the smallest change that would work.
