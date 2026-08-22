@@ -145,3 +145,37 @@ nothing anywhere else.
   or environment provider is the one that would make the peerhailer case work.
 - Whether #6158's git-sourced plugins land, since "where a plugin comes from" is
   the question our signing section answers.
+
+## Where this leaves the fork
+
+**Short term: build neither.** Not a plugin system, and not the credential path a
+plugin would have carried. Four things we planned turned out to exist already —
+short-lived one-time tokens (`t3 pair --ttl`, five minutes by default), delivery
+as a QR code that touches no clipboard, `--tailscale` pairing through an HTTPS
+tailnet URL, and Tailscale itself as an authenticated machine-to-machine channel.
+Each is faster to adopt than to write, and none of it is ours to maintain.
+
+The one small thing worth contributing upstream is `t3 pair --json`: the command
+renders a terminal QR unconditionally, so anything scripting around it is
+grepping ANSI art. One flag, in their "small, focused" bucket.
+
+**Medium term: decide between upstream's runtime and our own**, against criteria
+rather than taste. Ours is only worth building if theirs cannot answer:
+
+1. **A permission dimension on contributions.** Our trust-level argument — "store
+   this token" and "read this token" are different grants — has nowhere to attach
+   in what upstream has published.
+2. **A slot that returns data rather than a message.** A command takes no
+   arguments and returns 500 characters and a tone, so a plugin can fetch a
+   credential and cannot hand it over.
+3. **Whether the model settles at all.** Two of the six open PRs are spikes
+   comparing runtimes, and a separate contributor has a competing approach.
+
+If those land, we write a plugin against their contract and maintain nothing. If
+they do not, that is the point to reconsider — with a working peer fabric behind
+us and a clearer idea of what the plugin would be for.
+
+**The lesson worth keeping**, since it cost several hours to learn: check what
+exists before designing what to build. The fabric's real justification survived
+this — driving an agent on another machine, reviewed by a human, is not something
+Tailscale or T3 provides — and the credential story did not.
