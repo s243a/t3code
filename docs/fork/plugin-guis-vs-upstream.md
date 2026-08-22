@@ -87,6 +87,36 @@ forbids the reverse as well: a live value stays host-only and never reaches a
 snapshot. That is a stronger position than ours and worth adopting rather than
 arguing with.
 
+## Could a plugin fetch and install a credential? No.
+
+Worth answering concretely, because it is the thing we would want a plugin for.
+The command contract is deliberately small:
+
+```
+PluginCommand                  { id, label, description?, surfaces[] }
+PluginCommandInvokeInput       { generation, id }            ← no arguments
+PluginCommandInvocationResult  { message ≤500 chars, tone: "info" | "success" }
+```
+
+A command takes no input beyond its own id and returns a sentence. Nothing
+structured comes back, and nothing in the contract lets a plugin write host
+state.
+
+A handler _could_ act — it runs host-side in the plugin's own Effect scope, so it
+could reach a local peerhailer daemon and fetch a grant. It simply cannot hand
+the result to T3. Putting the credential in the message means displaying a bearer
+token in a toast, which is the clipboard problem with worse ergonomics and a
+longer life.
+
+Doing this properly needs a **slot that does not exist** — a credential or
+environment provider, something the host would invoke to obtain a connection
+rather than to show a message. That is a specific thing to watch for rather than
+a general hope.
+
+It also settles the question below for a better reason than convenience:
+peerhailer does not need a T3 plugin for the credential path **because the plugin
+system could not do it even if it were merged.**
+
 ## What this means for peerhailer
 
 **Do not build a plugin system in this fork.** Six open PRs and two competing
@@ -111,5 +141,7 @@ nothing anywhere else.
 - Whether #7480 or a different model wins the spike comparison.
 - Whether contributions ever gain a permission dimension, which is where our
   trust-level work would attach.
+- Whether a slot appears that returns _data_ rather than a message — a credential
+  or environment provider is the one that would make the peerhailer case work.
 - Whether #6158's git-sourced plugins land, since "where a plugin comes from" is
   the question our signing section answers.
